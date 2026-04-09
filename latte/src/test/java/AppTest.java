@@ -46,7 +46,12 @@ public class AppTest {
             Arguments.of("src/test/examples/MyNodeIfPermissionCheck.java"),
             Arguments.of("src/test/examples/MyNodeInvocationIf.java"),
             Arguments.of("src/test/examples/MyNodeIfInvocationPermission.java"),
-            Arguments.of("src/test/examples/PQNode.java")
+            Arguments.of("src/test/examples/PQNode.java"),
+            Arguments.of("src/test/examples/RefinementPrePostPositive.java"),
+            Arguments.of("src/test/examples/RefinementPairPositive.java"),
+            Arguments.of("src/test/examples/RefinementBorrowedReadPositive.java"),
+            Arguments.of("src/test/examples/RefinementOldPlusPositive.java"),
+            Arguments.of("src/test/examples/RefinementConstantsMinusPositive.java")
         );
     }
 
@@ -67,7 +72,12 @@ public class AppTest {
             Arguments.of("src/test/examples/MyStackFieldAssignMethod.java", "UNIQUE but got SHARED"),
             Arguments.of("src/test/examples/FieldAccessNoThis.java", "UNIQUE but got SHARED"),
             Arguments.of("src/test/examples/FieldAccessRightNoThis.java", "FREE but got UNIQUE"),
-            Arguments.of("src/test/examples/MyNodeIncorrectIfPermission.java", "Expected UNIQUE but got SHARED")
+            Arguments.of("src/test/examples/MyNodeIncorrectIfPermission.java", "Expected UNIQUE but got SHARED"),
+            Arguments.of("src/test/examples/RefinementPreconditionNegative.java", "Expected FREE but got UNIQUE"),
+            Arguments.of("src/test/examples/RefinementPostconditionNegative.java", "Expected FREE but got UNIQUE in return"),
+            Arguments.of("src/test/examples/RefinementAliasingNegative.java", "Expected UNIQUE but got SHARED"),
+            Arguments.of("src/test/examples/RefinementOldGreaterNegative.java", "Expected FREE but got UNIQUE"),
+            Arguments.of("src/test/examples/RefinementConstantsLessNegative.java", "Expected UNIQUE but got SHARED")
         );
     }
 
