@@ -1,40 +1,50 @@
+package latte;
+
 import specification.Free;
 import specification.Unique;
 
 public class RefinementPrePostPositive {
 
-    @Unique Box head;
+    @Unique BoxPrePost head;
 
-    public RefinementPrePostPositive(@Free Box head) {
+    public RefinementPrePostPositive(@Free BoxPrePost head) {
         this.head = head;
     }
 
     // pushed values are non-null.
     // @Refinement("v != null && this.head.value == v")
     void pushFront(@Free Object v) {
-        Box oldHead = this.head;
+        BoxPrePost oldHead = this.head;
         this.head = null;
-        Box fresh = new Box(v, oldHead);
+        BoxPrePost fresh = new BoxPrePost(v, oldHead);
         this.head = fresh;
     }
 
     // if a node is returned, its payload is initialized.
     // @Refinement("_ == null || _.value != null")
-    @Free Box popFrontOrNull() {
+    @Free BoxPrePost popFrontOrNull() {
         if (this.head == null) {
             return null;
         }
-        Box oldHead = this.head;
+        BoxPrePost oldHead = this.head;
         this.head = null;
         return oldHead;
     }
+
+    public static void main(String[] args) {
+        BoxPrePost box = new BoxPrePost(new Object(), null);
+        RefinementPrePostPositive test = new RefinementPrePostPositive(box);
+        test.pushFront(new Object());
+        BoxPrePost out = test.popFrontOrNull();
+        System.out.println(out);
+    }
 }
 
-class Box {
+class BoxPrePost {
     @Unique Object value;
-    @Unique Box next;
+    @Unique BoxPrePost next;
 
-    Box(@Free Object value, @Free Box next) {
+    BoxPrePost(@Free Object value, @Free BoxPrePost next) {
         this.value = value;
         this.next = next;
     }

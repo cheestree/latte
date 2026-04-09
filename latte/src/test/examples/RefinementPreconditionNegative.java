@@ -5,29 +5,35 @@ import specification.Unique;
 
 public class RefinementPreconditionNegative {
 
-    @Unique Node root;
+    @Unique NodePrecondition root;
 
-    public RefinementPreconditionNegative(@Free Node root) {
+    public RefinementPreconditionNegative(@Free NodePrecondition root) {
         this.root = root;
     }
 
     // @Refinement("arg != null && arg.value != null && _ != null")
-    @Free Node requireFree(@Free Node arg) {
-        return new Node(new Object(), arg);
+    @Free NodePrecondition requireFree(@Free NodePrecondition arg) {
+        return new NodePrecondition(new Object(), arg);
     }
 
     void violatesPrecondition() {
         // fails due to permission mismatch on @Free argument.
-        Node out = requireFree(this.root);
+        NodePrecondition out = requireFree(this.root);
         this.root = out;
+    }
+
+    public static void main(String[] args) {
+        NodePrecondition node = new NodePrecondition(new Object(), null);
+        RefinementPreconditionNegative test = new RefinementPreconditionNegative(node);
+        test.violatesPrecondition();
     }
 }
 
-class Node {
+class NodePrecondition {
     @Unique Object value;
-    @Unique Node next;
+    @Unique NodePrecondition next;
 
-    Node(@Free Object value, @Free Node next) {
+    NodePrecondition(@Free Object value, @Free NodePrecondition next) {
         this.value = value;
         this.next = next;
     }

@@ -6,29 +6,35 @@ import specification.Unique;
 // @Ghost("int weight")
 public class RefinementOldGreaterNegative {
 
-    @Unique LinkCell root;
+    @Unique LinkCellOldGreater root;
 
-    public RefinementOldGreaterNegative(@Free LinkCell root) {
+    public RefinementOldGreaterNegative(@Free LinkCellOldGreater root) {
         this.root = root;
     }
 
     // @StateRefinement(to="weight(this) > weight(old(this)) + 1 && return != null")
-    @Free LinkCell takeFree(@Free LinkCell candidate) {
+    @Free LinkCellOldGreater takeFree(@Free LinkCellOldGreater candidate) {
         return candidate;
     }
 
     void violatesOldStylePrecondition() {
         // Fails on permission checking before any value-level refinement can be checked.
-        LinkCell out = takeFree(this.root);
+        LinkCellOldGreater out = takeFree(this.root);
         this.root = out;
+    }
+
+    public static void main(String[] args) {
+        LinkCellOldGreater cell = new LinkCellOldGreater(1, null);
+        RefinementOldGreaterNegative test = new RefinementOldGreaterNegative(cell);
+        test.violatesOldStylePrecondition();
     }
 }
 
-class LinkCell {
+class LinkCellOldGreater {
     int weight;
-    @Unique LinkCell next;
+    @Unique LinkCellOldGreater next;
 
-    LinkCell(int weight, @Free LinkCell next) {
+    LinkCellOldGreater(int weight, @Free LinkCellOldGreater next) {
         this.weight = weight;
         this.next = next;
     }
