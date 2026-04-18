@@ -2,43 +2,43 @@ grammar RJ;
 
 prog: expression EOF;
 
-expression: logicalOrExpression;
+expression: logicalOrExp;
 
-logicalOrExpression
-	: logicalAndExpression (OR logicalAndExpression)*
+logicalOrExp
+	: logicalAndExp (OR logicalAndExp)*
 	;
 
-logicalAndExpression
-	: equalityExpression (AND equalityExpression)*
+logicalAndExp
+	: equalityExp (AND equalityExp)*
 	;
 
-equalityExpression
-	: relationalExpression ((EQ | NEQ) relationalExpression)?
+equalityExp
+	: relationalExp ((EQ | NEQ) relationalExp)?
 	;
 
-relationalExpression
-	: additiveExpression ((LT | GT | LE | GE) additiveExpression)?
+relationalExp
+	: additiveExp ((LT | GT | LE | GE) additiveExp)?
 	;
 
-additiveExpression
-	: unaryExpression ((PLUS | MINUS) unaryExpression)*
+additiveExp
+	: unaryExp ((PLUS | MINUS) unaryExp)*
 	;
 
-unaryExpression
-	: (NOT | MINUS) unaryExpression
+unaryExp
+	: (NOT | MINUS) unaryExp
 	| primary
 	;
 
 primary
 	: literal
 	| RESULT
-	| oldExpression
+	| oldExp
 	| fieldAccess
 	| ID
 	| LPAREN expression RPAREN
 	;
 
-oldExpression
+oldExp
 	: OLD LPAREN fieldAccess RPAREN
 	;
 
