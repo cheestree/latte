@@ -3,6 +3,9 @@ package latte;
 import specification.Free;
 import specification.Unique;
 
+// @Ghost("int epoch")
+// @StateSet({"empty", "nonEmpty"})
+// @StateSet({"stable", "moved"})
 public class RefinementPrePostPositive {
 
     @Unique BoxPrePost head;
@@ -12,7 +15,8 @@ public class RefinementPrePostPositive {
     }
 
     // pushed values are non-null.
-    // @Refinement("v != null && this.head.value == v")
+    // @Refinement("v != null && this.head != null && this.head.value == v")
+    // @StateRefinement(from="stable(this)", to="stable(this) && nonEmpty(this) && epoch(this) == epoch(old(this)) + 1")
     void pushFront(@Free Object v) {
         BoxPrePost oldHead = this.head;
         this.head = null;
@@ -21,7 +25,8 @@ public class RefinementPrePostPositive {
     }
 
     // if a node is returned, its payload is initialized.
-    // @Refinement("_ == null || _.value != null")
+    // @Refinement("this.head == null && (_ == null || _.value != null)")
+    // @StateRefinement(from="stable(this)", to="moved(this) && empty(this) && epoch(this) == epoch(old(this)) + 1")
     @Free BoxPrePost popFrontOrNull() {
         if (this.head == null) {
             return null;

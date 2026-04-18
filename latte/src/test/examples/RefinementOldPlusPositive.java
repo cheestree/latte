@@ -4,6 +4,7 @@ import specification.Free;
 import specification.Unique;
 
 // @Ghost("int score")
+// @StateSet({"baseline", "raised"})
 public class RefinementOldPlusPositive {
 
     @Unique MetricCellPlus head;
@@ -12,7 +13,7 @@ public class RefinementOldPlusPositive {
         this.head = head;
     }
 
-    // @StateRefinement(from="inc > 0", to="score(this) > score(old(this)) + inc - 1")
+    // @StateRefinement(from="baseline(this) && inc > 0", to="raised(this) && score(this) > score(old(this)) + inc - 1")
     void replaceWithRaisedScore(@Free MetricCellPlus fresh, int inc) {
         MetricCellPlus oldHead = this.head;
         this.head = null;

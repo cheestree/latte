@@ -3,6 +3,8 @@ package latte;
 import specification.Free;
 import specification.Unique;
 
+// @Ghost("int detachCount")
+// @StateSet({"holding", "detached"})
 public class RefinementConstantsMinusPositive {
 
     @Unique RangeCellMinus current;
@@ -11,7 +13,8 @@ public class RefinementConstantsMinusPositive {
         this.current = current;
     }
 
-    // @Refinement("limit > 10 && (_ == null || _.value < limit - 2)")
+    // @Refinement("limit > 10 && this.current == null && (_ == null || _.value < limit - 2)")
+    // @StateRefinement(from="holding(this)", to="detached(this) && detachCount(this) == detachCount(old(this)) + 1")
     @Free RangeCellMinus detachIfSmall(int limit) {
         if (this.current == null) {
             return null;

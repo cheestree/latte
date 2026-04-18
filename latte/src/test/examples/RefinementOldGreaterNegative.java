@@ -4,6 +4,7 @@ import specification.Free;
 import specification.Unique;
 
 // @Ghost("int weight")
+// @StateSet({"light", "heavy"})
 public class RefinementOldGreaterNegative {
 
     @Unique LinkCellOldGreater root;
@@ -12,7 +13,7 @@ public class RefinementOldGreaterNegative {
         this.root = root;
     }
 
-    // @StateRefinement(to="weight(this) > weight(old(this)) + 1 && return != null")
+    // @StateRefinement(from="light(this) && candidate != null", to="heavy(this) && weight(this) > weight(old(this)) + 1 && return != null")
     @Free LinkCellOldGreater takeFree(@Free LinkCellOldGreater candidate) {
         return candidate;
     }
