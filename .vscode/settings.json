@@ -1,7 +1,4 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "cSpell.words": [
-        "symb"
-    ],
+    "java.configuration.updateBuildConfiguration": "automatic",
     "java.debug.settings.onBuildFailureProceed": true
 }
