@@ -20,6 +20,9 @@ public class ClassLevelMaps {
     Map<CtClass<?>, Map<String, CtField<?>>> classFields;
     Map<CtClass<?>, Map<Integer, CtConstructor<?>>> classConstructors;
     Map<CtClass<?>, Map<Pair<String, Integer>, CtMethod<?>>> classMethods;
+    Map<CtField<?>, String> fieldRefinements;
+    Map<CtMethod<?>, MethodRefinementContract> methodContracts;
+    Map<CtConstructor<?>, MethodRefinementContract> constructorContracts;
     
 
 
@@ -28,6 +31,9 @@ public class ClassLevelMaps {
         classFields = new HashMap<CtClass<?>, Map<String, CtField<?>>>();
         classConstructors = new HashMap<>();
         classMethods = new HashMap<>();
+        fieldRefinements = new HashMap<>();
+        methodContracts = new HashMap<>();
+        constructorContracts = new HashMap<>();
     }
 
     public CtClass<?> getClassFrom(CtTypeReference<?> type) {
@@ -50,6 +56,10 @@ public class ClassLevelMaps {
         }
     }
 
+    public void addConstructorContract(CtConstructor<?> constructor, MethodRefinementContract contract) {
+        constructorContracts.put(constructor, contract);
+    }
+
     public void addMethod(CtClass<?> klass, CtMethod<?> method) {
         Pair<String, Integer> mPair = Pair.of(method.getSimpleName(), method.getParameters().size());
         if (classMethods.containsKey(klass)){
@@ -62,6 +72,10 @@ public class ClassLevelMaps {
         }
     }
 
+    public void addMethodContract(CtMethod<?> method, MethodRefinementContract contract) {
+        methodContracts.put(method, contract);
+    }
+
     public void addFieldClass(CtField<?> field, CtClass<?> klass) {
         if (classFields.containsKey(klass)){
             Map<String, CtField<?>> m = classFields.get(klass);
@@ -70,6 +84,12 @@ public class ClassLevelMaps {
             Map<String, CtField<?>> m = new HashMap<String, CtField<?>>();
             m.put(field.getSimpleName(), field);
             classFields.put(klass, m);
+        }
+    }
+
+    public void addFieldRefinement(CtField<?> field, String predicate) {
+        if (predicate != null && !predicate.isBlank()) {
+            fieldRefinements.put(field, predicate.trim());
         }
     }
 
@@ -86,6 +106,18 @@ public class ClassLevelMaps {
         return null;
     }
 
+    public String getFieldRefinement(String fieldName, CtTypeReference<?> type) {
+        CtClass<?> klass = getClassFrom(type);
+        if (classFields.containsKey(klass)) {
+            Map<String, CtField<?>> m = classFields.get(klass);
+            if (m.containsKey(fieldName)) {
+                CtField<?> field = m.get(fieldName);
+                return fieldRefinements.get(field);
+            }
+        }
+        return null;
+    }
+
     public CtConstructor<?> geCtConstructor (CtClass<?> klass, int numParams){
         if (classConstructors.containsKey(klass)){
             Map<Integer, CtConstructor<?>> l = classConstructors.get(klass);
@@ -94,6 +126,14 @@ public class ClassLevelMaps {
             }
         }
         return null;
+    }
+
+    public MethodRefinementContract getConstructorContract(CtClass<?> klass, int numParams) {
+        CtConstructor<?> c = geCtConstructor(klass, numParams);
+        if (c == null) {
+            return null;
+        }
+        return constructorContracts.get(c);
     }
 
     public CtMethod<?> getCtMethod(CtClass<?> klass, String methodName, int numParams){
@@ -106,6 +146,14 @@ public class ClassLevelMaps {
         }
         return null;
     } 
+
+    public MethodRefinementContract getMethodContract(CtClass<?> klass, String methodName, int numParams) {
+        CtMethod<?> m = getCtMethod(klass, methodName, numParams);
+        if (m == null) {
+            return null;
+        }
+        return methodContracts.get(m);
+    }
 
     public static void simplify(SymbolicEnvironment symbEnv, PermissionEnvironment permEnv) {
         // 1) Remove unreachable values

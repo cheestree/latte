@@ -11,7 +11,7 @@ import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.reference.CtTypeReference;
 
-public class LatteClassFirstPass extends LatteAbstractChecker{
+public class LatteClassFirstPass extends LatteAbstractChecker {
 
     public LatteClassFirstPass(SymbolicEnvironment se, PermissionEnvironment pe,
             ClassLevelMaps mtc) {
@@ -65,6 +65,4 @@ public class LatteClassFirstPass extends LatteAbstractChecker{
 		maps.addConstructor((CtClass<?>) c.getParent(), c);
 		super.visitCtConstructor(c);
 	}
-
-
 }
