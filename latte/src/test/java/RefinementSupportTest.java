@@ -71,13 +71,19 @@ public class RefinementSupportTest {
 
     @Test
     public void testPredicateSubstitutionOnVariables() throws ParsingException {
-        String substituted = PredicateSubstitution.substituteToString("x + 1 < y", "x", "z - 2");
+        String toSubstitute = "x + 1 < y";
+        String substituteWith = "z - 2";
+        String substituted = PredicateSubstitution.substituteToString(toSubstitute, "x", substituteWith);
+        System.out.println("Substituted predicate " + toSubstitute + " with " + substituteWith + ". Result: " + substituted + " (expected: ((z - 2) + 1) < y)");
         assertEquals("(((z - 2) + 1) < y)", substituted);
     }
 
     @Test
     public void testPredicateSubstitutionOnOldFieldAccess() throws ParsingException {
-        String substituted = PredicateSubstitution.substituteToString("old(x.f) == 0", "x", "this");
+        String toSubstitute = "old(x.f) == 0";
+        String substituteWith = "this";
+        String substituted = PredicateSubstitution.substituteToString(toSubstitute, "x", substituteWith);
+        System.out.println("Substituted predicate " + toSubstitute + " with " + substituteWith + ". Result: " + substituted + " (expected: (old(this.f) == 0))");
         assertEquals("(old(this.f) == 0)", substituted);
     }
 
