@@ -58,8 +58,7 @@ public class CreateASTVisitor {
     }
 
     private Expression expCreate(ExpContext rc) {
-        if (rc.getChildCount() >= 2) {
-            TerminalNode first = (TerminalNode) rc.getChild(0);
+        if (rc.getChild(0) instanceof TerminalNode first) {
             if (first.getSymbol().getType() == rj.grammar.RJLexer.NOT) {
                 Expression inner = create(rc.exp(0));
                 return new UnaryExpression(UnaryOperator.NOT, inner);
@@ -127,19 +126,22 @@ public class CreateASTVisitor {
                     .toList();
 
         if (name.equals("old")) {
-            if (arguments.size() != 1)
+            Expression arg = arguments.get(0);
+            if (!(arg instanceof FieldAccess))
                 throw new IllegalStateException(
-                    "old() takes exactly one argument"
-                );
-
-            return new OldExpression(arguments.get(0));
+                    "old() argument must be a field access like old(this.f) or old(x.f), got: " + arg
+            );
+            return new OldExpression(arg);
         }
 
         return new FunctionInvocation(name, arguments);
     }
 
     private Expression fieldAccessCreate(FieldAccessContext rc) {
-        return new FieldAccess(rc.ID(0).getText(), rc.ID(1).getText());
+        return new FieldAccess(
+            new Var(rc.ID(0).getText()),
+            rc.ID(1).getText()
+        );
     }
 
     private Expression literalCreate(LiteralContext rc) {
