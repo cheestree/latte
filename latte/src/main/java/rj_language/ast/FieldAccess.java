@@ -1,15 +1,15 @@
 package rj_language.ast;
 
 public final class FieldAccess extends Expression {
-    private final String receiver;
+    private final Expression receiver;
     private final String field;
 
-    public FieldAccess(String receiver, String field) {
+    public FieldAccess(Expression receiver, String field) {
         this.receiver = receiver;
         this.field = field;
     }
 
-    public String getReceiver() {
+    public Expression getReceiver() {
         return receiver;
     }
 
