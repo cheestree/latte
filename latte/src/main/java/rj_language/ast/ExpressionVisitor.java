@@ -9,8 +9,6 @@ public interface ExpressionVisitor<T> {
 
     T visitFieldAccess(FieldAccess expression);
 
-    T visitOldExpression(OldExpression expression);
-
     T visitResultExpression(ResultExpression expression);
 
     T visitLiteralBoolean(LiteralBoolean expression);
@@ -20,4 +18,8 @@ public interface ExpressionVisitor<T> {
     T visitLiteralReal(LiteralReal expression);
 
     T visitLiteralString(LiteralString expression);
+
+    T visitFunctionInvocation(FunctionInvocation expression);
+
+    T visitOldExpression(OldExpression expression);
 }
