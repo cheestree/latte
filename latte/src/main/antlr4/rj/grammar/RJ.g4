@@ -14,7 +14,7 @@ exp: (NOT | MINUS) exp
 
 primary
 	: literal
-	| RESULT
+	| RETURN
 	| functionCall
 	| fieldAccess
 	| ID
@@ -40,7 +40,7 @@ args
     : exp (',' exp)*
     ;
 
-RESULT: 'result';
+RETURN: 'return';
 
 AND: '&&';
 OR: '||';
