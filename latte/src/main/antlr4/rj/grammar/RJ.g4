@@ -40,7 +40,6 @@ args
     : exp (',' exp)*
     ;
 
-OLD: 'old';
 RESULT: 'result';
 
 AND: '&&';
