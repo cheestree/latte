@@ -1,46 +1,29 @@
 grammar RJ;
 
-prog: expression EOF;
+prog: exp EOF;
 
-expression: logicalOrExp;
-
-logicalOrExp
-	: logicalAndExp (OR logicalAndExp)*
-	;
-
-logicalAndExp
-	: equalityExp (AND equalityExp)*
-	;
-
-equalityExp
-	: relationalExp ((EQ | NEQ) relationalExp)?
-	;
-
-relationalExp
-	: additiveExp ((LT | GT | LE | GE) additiveExp)?
-	;
-
-additiveExp
-	: unaryExp ((PLUS | MINUS) unaryExp)*
-	;
-
-unaryExp
-	: (NOT | MINUS) unaryExp
-	| primary
-	;
+exp: (NOT | MINUS) exp
+   | exp (STAR | SLASH | PERCENT) exp
+   | exp (PLUS | MINUS) exp
+   | exp (LT | GT | LE | GE) exp
+   | exp (EQ | NEQ) exp
+   | exp AND exp
+   | exp OR exp
+   | primary
+   ;
 
 primary
 	: literal
 	| RESULT
-	| oldExp
+	| functionCall
 	| fieldAccess
 	| ID
-	| LPAREN expression RPAREN
+	| LPAREN exp RPAREN
 	;
 
-oldExp
-	: OLD LPAREN fieldAccess RPAREN
-	;
+functionCall
+    : ID LPAREN args? RPAREN
+    ;
 
 fieldAccess
 	: ID DOT ID
@@ -53,6 +36,10 @@ literal
 	| REAL
 	;
 
+args
+    : exp (',' exp)*
+    ;
+
 OLD: 'old';
 RESULT: 'result';
 
@@ -63,6 +50,9 @@ LE: '<=';
 LT: '<';
 GE: '>=';
 GT: '>';
+STAR    : '*';
+SLASH   : '/';
+PERCENT : '%';
 PLUS: '+';
 MINUS: '-';
 NEQ: '!=';
@@ -73,7 +63,7 @@ RPAREN: ')';
 DOT: '.';
 
 BOOL: 'true' | 'false';
-ID: '#'* [a-zA-Z_][a-zA-Z0-9_#]*;
+ID: [a-zA-Z_][a-zA-Z0-9_#]*;
 STRING: '"' (~["])* '"';
 INT: [0-9]+ ('_' [0-9]+)*;
 REAL: ([0-9]+ '.' [0-9]+) | ('.' [0-9]+);
