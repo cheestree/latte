@@ -7,8 +7,13 @@ import context.ClassLevelMaps;
 import context.MethodRefinementContract;
 import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
+import rj_language.ast.Expression;
+import rj_language.ast.LiteralInt;
 import rj_language.parsing.ParsingException;
 import rj_language.parsing.PredicateSubstitution;
+import rj_language.parsing.RefinementsParser;
+import rj_language.visitors.ExpressionPrettyPrinter;
+import rj_language.visitors.ExpressionSubstitutionVisitor;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 import spoon.reflect.declaration.CtClass;
@@ -74,8 +79,8 @@ public class RefinementSupportTest {
         String toSubstitute = "x + 1 < y";
         String substituteWith = "z - 2";
         String substituted = PredicateSubstitution.substituteToString(toSubstitute, "x", substituteWith);
-        System.out.println("Substituted predicate " + toSubstitute + " with " + substituteWith + ". Result: " + substituted + " (expected: ((z - 2) + 1) < y)");
-        assertEquals("(((z - 2) + 1) < y)", substituted);
+        System.out.println("Substituted predicate " + toSubstitute + " with " + substituteWith + ". Result: " + substituted + " (expected: z - 2 + 1 < y");
+        assertEquals("z - 2 + 1 < y", substituted);
     }
 
     @Test
@@ -83,8 +88,8 @@ public class RefinementSupportTest {
         String toSubstitute = "old(x.f) == 0";
         String substituteWith = "this";
         String substituted = PredicateSubstitution.substituteToString(toSubstitute, "x", substituteWith);
-        System.out.println("Substituted predicate " + toSubstitute + " with " + substituteWith + ". Result: " + substituted + " (expected: (old(this.f) == 0))");
-        assertEquals("(old(this.f) == 0)", substituted);
+        System.out.println("Substituted predicate " + toSubstitute + " with " + substituteWith + ". Result: " + substituted + " (expected: old(this.f) == 0)");
+        assertEquals("old(this.f) == 0", substituted);
     }
 
     @Test
@@ -92,5 +97,17 @@ public class RefinementSupportTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> PredicateSubstitution.substitute("x.f == 0", "x", "z + 1"));
         assertNotNull(error);
+    }
+
+    // Additional test to ensure that substitution does not mutate the original expression. This is important to verify that the substitution process is functional and does not have side effects on the input expression.
+    @Test
+    void testSubstitutionDoesNotMutateOriginal() throws ParsingException {
+        Expression original = RefinementsParser.createAST("x > 5");
+        String before = ExpressionPrettyPrinter.print(original);
+        
+        ExpressionSubstitutionVisitor.substitute(original, "x", new LiteralInt(3));
+        
+        String after = ExpressionPrettyPrinter.print(original);
+        assertEquals(before, after, "Original expression was mutated by substitution");
     }
 }

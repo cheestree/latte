@@ -5,12 +5,13 @@ import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.ExpressionVisitor;
 import rj_language.ast.FieldAccess;
+import rj_language.ast.FunctionInvocation;
 import rj_language.ast.LiteralBoolean;
 import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
 import rj_language.ast.OldExpression;
-import rj_language.ast.ResultExpression;
+import rj_language.ast.ReturnExpression;
 import rj_language.ast.UnaryExpression;
 import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
@@ -29,9 +30,9 @@ public class ExpressionPrettyPrinter implements ExpressionVisitor<String> {
 
     @Override
     public String visitBinaryExpression(BinaryExpression expression) {
-        return "(" + expression.getLeft().accept(this)
+        return expression.getLeft().accept(this)
                 + " " + symbol(expression.getOperator()) + " "
-                + expression.getRight().accept(this) + ")";
+                + expression.getRight().accept(this);
     }
 
     @Override
@@ -49,17 +50,17 @@ public class ExpressionPrettyPrinter implements ExpressionVisitor<String> {
 
     @Override
     public String visitFieldAccess(FieldAccess expression) {
-        return expression.getReceiver() + "." + expression.getField();
+        return expression.getReceiver().accept(this) + "." + expression.getField();
     }
 
     @Override
     public String visitOldExpression(OldExpression expression) {
-        return "old(" + expression.getFieldAccess().accept(this) + ")";
+        return "old(" + expression.getExpression().accept(this) + ")";
     }
 
     @Override
-    public String visitResultExpression(ResultExpression expression) {
-        return "result";
+    public String visitReturnExpression(ReturnExpression expression) {
+        return "return";
     }
 
     @Override
@@ -91,6 +92,13 @@ public class ExpressionPrettyPrinter implements ExpressionVisitor<String> {
             case GE -> ">=";
             case AND -> "&&";
             case OR -> "||";
+            case DIV -> "/";
+            case GT -> ">";
+            case LE -> "<=";
+            case MOD -> "%";
+            case MUL -> "*";
+            case NEQ -> "!=";
+            default -> throw new IllegalArgumentException("Unexpected value: " + operator);
         };
     }
 
@@ -102,5 +110,13 @@ public class ExpressionPrettyPrinter implements ExpressionVisitor<String> {
             return "(" + expression.accept(this) + ")";
         }
         return expression.accept(this);
+    }
+
+    @Override
+    public String visitFunctionInvocation(FunctionInvocation expression) {
+        String args = expression.getArguments().stream()
+            .map(arg -> arg.accept(this))
+            .collect(java.util.stream.Collectors.joining(", "));
+        return expression.getName() + "(" + args + ")";
     }
 }
