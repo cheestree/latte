@@ -21,7 +21,7 @@ import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
 import rj_language.ast.OldExpression;
-import rj_language.ast.ResultExpression;
+import rj_language.ast.ReturnExpression;
 import rj_language.ast.UnaryExpression;
 import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
@@ -102,8 +102,8 @@ public class CreateASTVisitor {
     private Expression primaryCreate(PrimaryContext rc) {
         if (rc.literal() != null)
             return create(rc.literal());
-        if (rc.RESULT() != null)
-            return new ResultExpression();
+        if (rc.RETURN() != null)
+            return new ReturnExpression();
         if (rc.functionCall() != null)
             return create(rc.functionCall());
         if (rc.fieldAccess() != null)

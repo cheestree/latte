@@ -9,7 +9,7 @@ public interface ExpressionVisitor<T> {
 
     T visitFieldAccess(FieldAccess expression);
 
-    T visitResultExpression(ResultExpression expression);
+    T visitResultExpression(ReturnExpression expression);
 
     T visitLiteralBoolean(LiteralBoolean expression);
 
