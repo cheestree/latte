@@ -11,6 +11,10 @@ public class PipedOutputStreamAliasStoreError {
         @Unique
         PipedInputStream storedSink;
 
+        public PipedOutputStream() {
+
+        }
+
         /*
         @StateRefinement(
             from  = this.isConnected == false && this.isClosed == false
@@ -50,8 +54,8 @@ public class PipedOutputStreamAliasStoreError {
         PipedOutputStream storedSource;
 
         // @StateRefinement(to = this.isConnected == false && this.isClosed == false)
-        public PipedInputStream PipedInputStream() {
-            return new PipedInputStream();
+        public PipedInputStream() {
+
         }
 
         /*

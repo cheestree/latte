@@ -8,8 +8,8 @@ public class PipedOutputStreamWriteAfterCloseError {
         boolean isClosed;
 
         // @StateRefinement(to = this.isConnected == false && this.isClosed == false)
-        public PipedOutputStream PipedOutputStream() {
-            return new PipedOutputStream();
+        public PipedOutputStream() {
+
         }
 
         /*
@@ -45,8 +45,8 @@ public class PipedOutputStreamWriteAfterCloseError {
         boolean isClosed;
 
         // @StateRefinement(to = this.isConnected == false && this.isClosed == false)
-        public PipedInputStream PipedInputStream() {
-            return new PipedInputStream();
+        public PipedInputStream() {
+
         }
 
         /*

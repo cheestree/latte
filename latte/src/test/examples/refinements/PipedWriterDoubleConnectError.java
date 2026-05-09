@@ -7,8 +7,8 @@ public class PipedWriterDoubleConnectError {
         boolean isConnected;
 
         // @StateRefinement(to = this.isConnected == false)
-        public PipedWriter PipedWriter() {
-            return new PipedWriter();
+        public PipedWriter() {
+
         }
 
         /*
@@ -33,8 +33,8 @@ public class PipedWriterDoubleConnectError {
         boolean isConnected;
 
         // @StateRefinement(to = this.isConnected == false)
-        public PipedReader PipedReader() {
-            return new PipedReader();
+        public PipedReader() {
+
         }
 
         /*
