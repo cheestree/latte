@@ -2,31 +2,32 @@ grammar RJ;
 
 prog: exp EOF;
 
-exp: (NOT | MINUS) exp
-   | exp (STAR | SLASH | PERCENT) exp
-   | exp (PLUS | MINUS) exp
-   | exp (LT | GT | LE | GE) exp
-   | exp (EQ | NEQ) exp
-   | exp AND exp
-   | exp OR exp
-   | primary
+exp: 
+   (NOT | MINUS) exp					# ExpUnary
+   | exp (STAR | SLASH | PERCENT) exp	# ExpMult
+   | exp (PLUS | MINUS) exp				# ExpAdd
+   | exp (LT | GT | LE | GE) exp		# ExpRel
+   | exp (EQ | NEQ) exp					# ExpEq
+   | exp AND exp						# ExpAnd
+   | exp OR exp							# ExpOr
+   | primary							# ExpPrim
    ;
 
 primary
-	: literal
-	| RETURN
-	| functionCall
-	| fieldAccess
-	| ID
-	| LPAREN exp RPAREN
+	: literal							# PrimLit
+	| RETURN							# PrimRet
+	| functionCall						# PrimFunCall
+	| fieldAccess						# PrimFieldAcc
+	| ID								# PrimId
+	| LPAREN exp RPAREN					# PrimParen
 	;
 
-functionCall
-    : ID LPAREN args? RPAREN
+functionCall							
+    : ID LPAREN args? RPAREN			# ExpFunCall
     ;
 
 fieldAccess
-	: ID DOT ID
+	: ID DOT ID							# ExpFieldAcc
 	;
 
 literal
@@ -37,7 +38,7 @@ literal
 	;
 
 args
-    : exp (',' exp)*
+    : exp (',' exp)*					# ListArg
     ;
 
 RETURN: 'return';
