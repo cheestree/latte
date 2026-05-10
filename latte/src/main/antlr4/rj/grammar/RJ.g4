@@ -38,7 +38,7 @@ literal
 	;
 
 args
-    : exp (',' exp)*					# ListArg
+    : exp (',' exp)*
     ;
 
 RETURN: 'return';
