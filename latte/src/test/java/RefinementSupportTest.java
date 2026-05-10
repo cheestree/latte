@@ -29,8 +29,10 @@ public class RefinementSupportTest {
                 import specification.lj.Refinement;
                 import specification.lj.StateRefinement;
                 import specification.Unique;
+                import specification.lj.Ghost
 
                 class SampleRefinement {
+                    @Ghost
                     @Refinement(\"this.v >= 0\")
                     int v;
 

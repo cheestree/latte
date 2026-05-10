@@ -2,8 +2,10 @@ package context;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -23,6 +25,7 @@ public class ClassLevelMaps {
     Map<CtField<?>, String> fieldRefinements;
     Map<CtMethod<?>, MethodRefinementContract> methodContracts;
     Map<CtConstructor<?>, MethodRefinementContract> constructorContracts;
+    Map<String, Set<String>> ghostFields = new HashMap<>();
     
 
 
@@ -91,6 +94,19 @@ public class ClassLevelMaps {
         if (predicate != null && !predicate.isBlank()) {
             fieldRefinements.put(field, predicate.trim());
         }
+    }
+
+    public void addGhostField(String className, String fieldName) {
+        ghostFields.computeIfAbsent(className, k -> new LinkedHashSet<>())
+                .add(fieldName);
+    }
+
+    public Set<String> getGhostFields(String className) {
+        return ghostFields.getOrDefault(className, Set.of());
+    }
+
+    public boolean isGhostField(String className, String fieldName) {
+        return getGhostFields(className).contains(fieldName);
     }
 
     public UniquenessAnnotation getFieldAnnotation(String fieldName, CtTypeReference<?> type) {
