@@ -1,41 +1,42 @@
 package specification.lj;
 
 import java.lang.annotation.ElementType;
-import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation to create a ghost variable for a class or interface.
+ * Annotation to annotate ghost fields in the code.
  * <p>
- * Ghost variables that only exist during the verification and can be used in refinements and state refinements.
- * They are not part of the actual implementation but help specify behavior and invariants.
+ * Ghost annotations are used to indicate that a field is also a ghost variable, which is a variable 
+ * that has an old value that can be used in specifications and proofs, but does not exist at runtime.
  * <p>
  * <strong>Example:</strong>
  * <pre>
  * {@code
- * @Ghost("int size")
  * public class MyStack {
  *     // ...
+ *     @Ghost
+ *     int size
  * }
  * }
  * </pre>
  *
  * @author Catarina Gamboa
+ * modified by Daniel Carvalho for a different implementation of ghost variables, now fields are annotated with @Ghost instead of classes.
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE})
-@Repeatable(GhostMultiple.class)
+@Target({ElementType.FIELD})
 public @interface Ghost {
 
     /**
-     * The type and name of the ghost variable.
+     * The declaration of the ghost variable, for a given field.
      * <p>
      * <strong>Example:</strong>
      * <pre>
      * {@code
-     * @Ghost("int size")
+     * @Ghost
+     * int size
      * }
      * </pre>
      */
