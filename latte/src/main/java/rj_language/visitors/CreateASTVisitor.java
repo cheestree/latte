@@ -15,7 +15,6 @@ import rj.grammar.RJParser.ExpOrContext;
 import rj.grammar.RJParser.ExpPrimContext;
 import rj.grammar.RJParser.ExpRelContext;
 import rj.grammar.RJParser.ExpUnaryContext;
-import rj.grammar.RJParser.ListArgContext;
 import rj.grammar.RJParser.LiteralContext;
 import rj.grammar.RJParser.PrimFieldAccContext;
 import rj.grammar.RJParser.PrimFunCallContext;
@@ -95,7 +94,7 @@ public class CreateASTVisitor {
 
         List<Expression> arguments = rc.args() == null
             ? List.of()
-            : ((ListArgContext) rc.args()).exp().stream()
+            : rc.args().exp().stream()
                 .map(this::create)
                 .toList();
 
