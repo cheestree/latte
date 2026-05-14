@@ -17,10 +17,10 @@ public class PipedOutputStreamAliasStoreError {
 
         /*
         @StateRefinement(
-            from  = this.isConnected == false && this.isClosed == false
-                && sink.isConnected == false && sink.isClosed == false,
-            to = this.isConnected == true
-                && sink.isConnected == true
+            from = "this.isConnected == false && this.isClosed == false
+                && sink.isConnected == false && sink.isClosed == false",
+            to = "this.isConnected == true && this.isClosed == false
+                && sink.isConnected == true && sink.isClosed == false"
         )
         */
         void connect(@Borrowed PipedInputStream sink) {
@@ -29,16 +29,16 @@ public class PipedOutputStreamAliasStoreError {
 
         /*
         @StateRefinement(
-            from = this.isConnected == true && this.isClosed == false,
-            to = this.isConnected == true && this.isClosed == false
+            from = "this.isConnected == true && this.isClosed == false",
+            to = "this.isConnected == true && this.isClosed == false"
         )
         */
         void write(byte[] b) { }
 
         /*
         @StateRefinement(
-            from = this.isClosed == false,
-            to = this.isClosed == true && this.isConnected == false
+            from = "this.isClosed == false",
+            to = "this.isClosed == true && this.isConnected == false"
         )
         */
         void close() { }
@@ -53,24 +53,24 @@ public class PipedOutputStreamAliasStoreError {
         @Unique
         PipedOutputStream storedSource;
 
-        // @StateRefinement(to = this.isConnected == false && this.isClosed == false)
+        // @StateRefinement(to = "this.isConnected == false && this.isClosed == false")
         public PipedInputStream() {
 
         }
 
         /*
         @StateRefinement(
-            from  = this.isConnected == false && this.isClosed == false
-                && source.isConnected == false && source.isClosed == false,
-            to = this.isConnected == true && source.isConnected == true
+            from = "this.isConnected == false && this.isClosed == false
+                && source.isConnected == false && source.isClosed == false",
+            to = "this.isConnected == true && source.isConnected == true"
         )
         */
         void connect(@Borrowed PipedOutputStream source) { }
 
         /*
         @StateRefinement(
-            from = this.isConnected == true && this.isClosed == false,
-            to = this.isConnected == true && this.isClosed == false
+            from = "this.isConnected == true && this.isClosed == false",
+            to = "this.isConnected == true && this.isClosed == false"
         )
         */
         int read() { 
@@ -79,8 +79,8 @@ public class PipedOutputStreamAliasStoreError {
 
         /*
         @StateRefinement(
-            from = this.isClosed == false,
-            to = this.isClosed == true && this.isConnected == false
+            from = "this.isClosed == false",
+            to = "this.isClosed == true && this.isConnected == false"
         )
         */
         void close() { }

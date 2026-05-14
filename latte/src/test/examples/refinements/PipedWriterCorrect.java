@@ -4,15 +4,15 @@ public class PipedWriterCorrect {
     public static class PipedWriter {
         // @Ghost 
         boolean isConnected;
-        // @StateRefinement(to = this.isConnected &= false)
+        // @StateRefinement(to = "this.isConnected == false")
         public PipedWriter() {
             
         }
 
         /*
         @StateRefinement(
-            from = this.isConnected == false && reader.isConnected == false,
-            to = this.isConnected == true && reader.isConnected == true
+            from = "this.isConnected == false && reader.isConnected == false",
+            to = "this.isConnected == true && reader.isConnected == true"
         )
         */
         void connect(@Borrowed PipedReader reader) {
@@ -21,8 +21,8 @@ public class PipedWriterCorrect {
 
         /*
         @StateRefinement(
-            from = this.isConnected == false && reader.isConnected == false, 
-            to = this.isConnected == true && reader.isConnected == true
+            from = "this.isConnected == false && reader.isConnected == false", 
+            to = "this.isConnected == true && reader.isConnected == true"
         )
         */
         void write(String s) {
@@ -35,15 +35,15 @@ public class PipedWriterCorrect {
         // @Ghost
         boolean isConnected;
         
-        // @StateRefinement(to = this.isConnected &= false)
+        // @StateRefinement(to = "this.isConnected == false")
         public PipedReader() {
 
         }
 
         /*
         @StateRefinement(
-            from = this.isConnected == false && writer.isConnected == false,
-            to = this.isConnected == true && writer.isConnected == true
+            from = "this.isConnected == false && writer.isConnected == false",
+            to = "this.isConnected == true && writer.isConnected == true"
         )
         */
         void connect(@Borrowed PipedWriter writer) {
@@ -52,8 +52,8 @@ public class PipedWriterCorrect {
 
         /*
         @StateRefinement(
-            from = this.isConnected == true, 
-            to = this.isConnected == true
+            from = "this.isConnected == true", 
+            to = "this.isConnected == true"
         )
         */
         void read() {
