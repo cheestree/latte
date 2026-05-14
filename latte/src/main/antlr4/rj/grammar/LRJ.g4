@@ -1,4 +1,4 @@
-grammar RJ;
+grammar LRJ;
 
 prog: exp EOF;
 
