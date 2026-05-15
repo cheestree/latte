@@ -3,11 +3,13 @@ package ast;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.Test;
 
 import rj_language.ast.BinaryExpression;
 import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
+import rj_language.ast.FieldAccess;
 import rj_language.ast.FunctionInvocation;
 import rj_language.ast.LiteralBoolean;
 import rj_language.ast.LiteralInt;
@@ -70,5 +72,23 @@ public class CreateASTVisitorTest {
     void functionCallWithArgs() {
         FunctionInvocation e = (FunctionInvocation) parse("foo(1, 2)");
         assertEquals(2, e.getArguments().size());
+    }
+
+    @Test
+    void expressionWithParentheses() {
+        BinaryExpression e = (BinaryExpression) parse("(1 + 2) * 3");
+        assertEquals(BinaryOperator.MUL, e.getOperator());
+        assertInstanceOf(BinaryExpression.class, e.getLeft());
+        assertInstanceOf(LiteralInt.class, e.getRight());
+    }
+
+    @Test
+    void expressionWithFieldAccess() {
+        Expression e = parse("this.isConnected == false");
+        assertInstanceOf(BinaryExpression.class, e);
+        BinaryExpression be = (BinaryExpression) e;
+        assertEquals(BinaryOperator.EQ, be.getOperator());
+        assertInstanceOf(FieldAccess.class, be.getLeft());
+        assertInstanceOf(LiteralBoolean.class, be.getRight());
     }
 }
