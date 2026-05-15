@@ -32,7 +32,6 @@ import rj_language.ast.LiteralBoolean;
 import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
-import rj_language.ast.OldExpression;
 import rj_language.ast.ReturnExpression;
 import rj_language.ast.UnaryExpression;
 import rj_language.ast.UnaryOperator;
@@ -97,18 +96,6 @@ public class CreateASTVisitor {
             : rc.args().exp().stream()
                 .map(this::create)
                 .toList();
-
-        if (name.equals("old")) {
-            if (arguments.size() != 1)
-                throw new IllegalStateException(
-                    "old() requires exactly 1 argument, got: " + arguments.size()
-                );
-            if (!(arguments.get(0) instanceof FieldAccess fa))
-                throw new IllegalStateException(
-                    "old() argument must be a field access like old(this.f), got: " + arguments.get(0)
-                );
-            return new OldExpression(fa);
-        }
 
         return new FunctionInvocation(name, arguments);
     }

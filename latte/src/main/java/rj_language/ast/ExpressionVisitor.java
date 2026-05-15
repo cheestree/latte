@@ -20,6 +20,4 @@ public interface ExpressionVisitor<T> {
     T visitLiteralString(LiteralString expression);
 
     T visitFunctionInvocation(FunctionInvocation expression);
-
-    T visitOldExpression(OldExpression expression);
 }
