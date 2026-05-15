@@ -4,8 +4,8 @@ import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
 
-import rj.grammar.RJLexer;
-import rj.grammar.RJParser;
+import rj.grammar.LRJLexer;
+import rj.grammar.LRJParser;
 import rj_language.ast.Expression;
 import rj_language.visitors.CreateASTVisitor;
 
@@ -17,14 +17,14 @@ public class RefinementsParser {
     }
 
     private static ParseTree compile(String input) throws ParsingException {
-        RJParser parser = createParser(input);
+        LRJParser parser = createParser(input);
         return parser.prog();
     }
 
-    private static RJParser createParser(String input) {
-        RJLexer lexer = new RJLexer(CharStreams.fromString(input));
+    private static LRJParser createParser(String input) {
+        LRJLexer lexer = new LRJLexer(CharStreams.fromString(input));
         CommonTokenStream tokens = new CommonTokenStream(lexer);
-        RJParser parser = new RJParser(tokens);
+        LRJParser parser = new LRJParser(tokens);
         return parser;
     }
 }
