@@ -6,7 +6,6 @@ import java.util.List;
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
-import rj_language.visitors.FieldGhostsGeneration;
 import spoon.processing.AbstractProcessor;
 import spoon.reflect.declaration.CtPackage;
 import spoon.reflect.factory.Factory;
@@ -28,7 +27,6 @@ public class LatteProcessor extends AbstractProcessor<CtPackage> {
         
         if (!visitedPackages.contains(pkg)) {
             visitedPackages.add(pkg);
-            pkg.accept(new FieldGhostsGeneration(mtc));
             pkg.accept(new LatteClassFirstPass( se, pe, mtc));
             pkg.accept(new LatteTypeChecker( se, pe, mtc));
             pkg.accept(new RefinementFirstPass( se, pe, mtc));
