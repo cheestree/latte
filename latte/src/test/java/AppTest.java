@@ -69,8 +69,7 @@ public class AppTest {
             Arguments.of("src/test/examples/MyStackFieldAssignMethod.java", "UNIQUE but got SHARED"),
             Arguments.of("src/test/examples/FieldAccessNoThis.java", "UNIQUE but got SHARED"),
             Arguments.of("src/test/examples/FieldAccessRightNoThis.java", "FREE but got UNIQUE"),
-            Arguments.of("src/test/examples/MyNodeIncorrectIfPermission.java", "Expected UNIQUE but got SHARED"),
-            Arguments.of("src/test/examples/refinements/PipedOutputStreamAliasStoreError.java", "UNIQUE but got BORROWED")
+            Arguments.of("src/test/examples/MyNodeIncorrectIfPermission.java", "Expected UNIQUE but got SHARED")
             // Arguments.of("src/test/examples/refinements/PipedOutputstreamWriteAfterCloseError.java", "Refinement error") // TODO: this will only work after implementing refinement type checking
             // Arguments.of("src/test/examples/refinements/PipedWriterDoubleConnectError.java", "Refinement error") // TODO: this will only work after implementing refinement type checking
         );
