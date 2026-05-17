@@ -10,7 +10,6 @@ import rj_language.ast.LiteralBoolean;
 import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
-import rj_language.ast.OldExpression;
 import rj_language.ast.ReturnExpression;
 import rj_language.ast.UnaryExpression;
 import rj_language.ast.UnaryOperator;
@@ -51,11 +50,6 @@ public class ExpressionPrettyPrinter implements ExpressionVisitor<String> {
     @Override
     public String visitFieldAccess(FieldAccess expression) {
         return expression.getReceiver().accept(this) + "." + expression.getField();
-    }
-
-    @Override
-    public String visitOldExpression(OldExpression expression) {
-        return "old(" + expression.getExpression().accept(this) + ")";
     }
 
     @Override

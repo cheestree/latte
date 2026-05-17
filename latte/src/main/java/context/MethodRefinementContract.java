@@ -58,7 +58,7 @@ public class MethodRefinementContract {
         StringJoiner sj = new StringJoiner(" && ");
         for (StateTransition t : stateTransitions) {
             if (t.getFrom() != null) {
-                sj.add("(" + t.getFrom() + ")");
+                sj.add(t.getFrom());
             }
         }
         return sj.length() == 0 ? null : sj.toString();
@@ -71,7 +71,7 @@ public class MethodRefinementContract {
         StringJoiner sj = new StringJoiner(" && ");
         for (StateTransition t : stateTransitions) {
             if (t.getTo() != null) {
-                sj.add("(" + t.getTo() + ")");
+                sj.add(t.getTo());
             }
         }
         return sj.length() == 0 ? null : sj.toString();
