@@ -1,77 +1,83 @@
+import java.io.File;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import org.junit.jupiter.api.Test;
 
 import context.ClassLevelMaps;
 import context.MethodRefinementContract;
 import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
-import rj_language.ast.Expression;
-import rj_language.ast.LiteralInt;
-import rj_language.parsing.ParsingException;
-import rj_language.parsing.RefinementsParser;
-import rj_language.visitors.ExpressionPrettyPrinter;
-import rj_language.visitors.ExpressionSubstitutionVisitor;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.visitor.filter.TypeFilter;
-import spoon.support.compiler.VirtualFile;
 import typechecking.RefinementFirstPass;
 
 public class RefinementSupportTest {
-
     @Test
     public void testFirstPassExtractsRefinementContracts() {
-        String source = """
-                import specification.lj.Refinement;
-                import specification.lj.StateRefinement;
-                import specification.Unique;
-                import specification.lj.Ghost
-
-                class SampleRefinement {
-                    @Ghost
-                    @Refinement(\"this.v >= 0\")
-                    int v;
-
-                    @StateRefinement(to = \"ready(this)\")
-                    SampleRefinement() {}
-
-                    @Refinement(\"result >= x\")
-                    @StateRefinement(from = \"ready(this)\", to = \"done(this)\")
-                    int inc(@Refinement(\"x >= 0\") int x) {
-                        return x + 1;
-                    }
-                }
-                """;
-
+        String source = "./src/test/examples/refinements/PipedWriterCorrect.java";
+        File file = new File(source);
         Launcher launcher = new Launcher();
         launcher.getEnvironment().setNoClasspath(true);
-        launcher.addInputResource(new VirtualFile(source, "SampleRefinement.java"));
+        launcher.addInputResource(file.getAbsolutePath());
         CtModel model = launcher.buildModel();
 
         ClassLevelMaps maps = new ClassLevelMaps();
         RefinementFirstPass pass = new RefinementFirstPass(new SymbolicEnvironment(), new PermissionEnvironment(), maps);
         model.getRootPackage().accept(pass);
 
-        CtClass<?> klass = model.getElements(new TypeFilter<>(CtClass.class)).stream()
-                .filter(c -> c.getSimpleName().equals("SampleRefinement"))
-                .findFirst()
-                .orElseThrow();
+        CtClass<?> writerClass = model.getElements(new TypeFilter<>(CtClass.class)).stream()
+            .filter(c -> c.getSimpleName().equals("PipedWriter"))
+            .findFirst()
+            .orElseThrow();
 
-        MethodRefinementContract methodContract = maps.getMethodContract(klass, "inc", 1);
-        assertNotNull(methodContract);
-        assertEquals("result >= x", methodContract.getMethodRefinement());
-        assertEquals("x >= 0", methodContract.getParameterRefinement("x"));
-        assertEquals("(ready(this))", methodContract.getCombinedPrecondition());
-        assertEquals("(done(this))", methodContract.getCombinedPostcondition());
+        CtClass<?> readerClass = model.getElements(new TypeFilter<>(CtClass.class)).stream()
+            .filter(c -> c.getSimpleName().equals("PipedReader"))
+            .findFirst()
+            .orElseThrow();
 
-        MethodRefinementContract constructorContract = maps.getConstructorContract(klass, 0);
-        assertNotNull(constructorContract);
-        assertEquals("(ready(this))", constructorContract.getCombinedPostcondition());
+        MethodRefinementContract writerConnect = maps.getMethodContract(writerClass, "connect", 1);
+        assertNotNull(writerConnect);
+        assertNull(writerConnect.getMethodRefinement());
+        assertNull(writerConnect.getParameterRefinement("reader"));
+        assertEquals("this.isConnected == false && reader.isConnected == false", writerConnect.getCombinedPrecondition());
+        assertEquals("this.isConnected == true && reader.isConnected == true", writerConnect.getCombinedPostcondition());
 
-        String fieldRefinement = maps.getFieldRefinement("v", klass.getReference());
-        assertEquals("this.v >= 0", fieldRefinement);
+        MethodRefinementContract writerWrite = maps.getMethodContract(writerClass, "write", 1);
+        assertNotNull(writerWrite);
+        assertNull(writerWrite.getMethodRefinement());
+        assertNull(writerWrite.getParameterRefinement("s"));
+        assertEquals("this.isConnected == false && reader.isConnected == false", writerWrite.getCombinedPrecondition());
+        assertEquals("this.isConnected == true && reader.isConnected == true", writerWrite.getCombinedPostcondition());
+
+        MethodRefinementContract readerConnect = maps.getMethodContract(readerClass, "connect", 1);
+        assertNotNull(readerConnect);
+        assertNull(readerConnect.getMethodRefinement());
+        assertNull(readerConnect.getParameterRefinement("writer"));
+        assertEquals("this.isConnected == false && writer.isConnected == false", readerConnect.getCombinedPrecondition());
+        assertEquals("this.isConnected == true && writer.isConnected == true", readerConnect.getCombinedPostcondition());
+
+        MethodRefinementContract readerRead = maps.getMethodContract(readerClass, "read", 0);
+        assertNotNull(readerRead);
+        assertNull(readerRead.getMethodRefinement());
+        assertEquals("this.isConnected == true", readerRead.getCombinedPrecondition());
+        assertEquals("this.isConnected == true", readerRead.getCombinedPostcondition());
+
+        MethodRefinementContract writerConstructor = maps.getConstructorContract(writerClass, 0);
+        assertNotNull(writerConstructor);
+        assertEquals("this.isConnected == false", writerConstructor.getCombinedPostcondition());
+
+        MethodRefinementContract readerConstructor = maps.getConstructorContract(readerClass, 0);
+        assertNotNull(readerConstructor);
+        assertEquals("this.isConnected == false", readerConstructor.getCombinedPostcondition());
+
+        String writerFieldRefinement = maps.getFieldRefinement("isConnected", writerClass.getReference());
+        assertNull(writerFieldRefinement);
+
+        String readerFieldRefinement = maps.getFieldRefinement("isConnected", readerClass.getReference());
+        assertNull(readerFieldRefinement);
     }
 }
