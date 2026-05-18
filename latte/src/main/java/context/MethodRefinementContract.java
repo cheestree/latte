@@ -1,5 +1,6 @@
 package context;
 
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -7,12 +8,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 
+import spoon.reflect.declaration.CtAnnotation;
+
 /**
  * Stores refinement metadata extracted from method/constructor annotations.
  */
 public class MethodRefinementContract {
-    private String methodRefinement;
-    private final Map<String, String> parameterRefinements;
+    private CtAnnotation<? extends Annotation> methodRefinement;
+    private final Map<String, CtAnnotation<? extends Annotation>> parameterRefinements;
     private final List<StateTransition> stateTransitions;
 
     public MethodRefinementContract() {
@@ -20,26 +23,25 @@ public class MethodRefinementContract {
         this.stateTransitions = new ArrayList<>();
     }
 
-    public String getMethodRefinement() {
+    public CtAnnotation<? extends Annotation> getMethodRefinement() {
         return methodRefinement;
     }
 
-    public void setMethodRefinement(String methodRefinement) {
-        this.methodRefinement = normalize(methodRefinement);
+    public void setMethodRefinement(CtAnnotation<? extends Annotation> methodRefinement) {
+        this.methodRefinement = methodRefinement;
     }
 
-    public void addParameterRefinement(String parameterName, String predicate) {
-        String normalized = normalize(predicate);
-        if (parameterName != null && !parameterName.isBlank() && normalized != null) {
-            parameterRefinements.put(parameterName, normalized);
+    public void addParameterRefinement(String parameterName, CtAnnotation<? extends Annotation> predicate) {
+        if (parameterName != null && !parameterName.isBlank() && predicate != null) {
+            parameterRefinements.put(parameterName, predicate);
         }
     }
 
-    public String getParameterRefinement(String parameterName) {
+    public CtAnnotation<? extends Annotation> getParameterRefinement(String parameterName) {
         return parameterRefinements.get(parameterName);
     }
 
-    public Map<String, String> getParameterRefinements() {
+    public Map<String, CtAnnotation<? extends Annotation>> getParameterRefinements() {
         return Collections.unmodifiableMap(parameterRefinements);
     }
 

@@ -42,13 +42,13 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		CtElement parent = f.getParent();
 		if (parent instanceof CtClass) {
 			CtClass<?> klass = (CtClass<?>) parent;
-        String refinement = extractRefinement(f);
-        if (refinement != null) {
-		    f.putMetadata(Constants.FIELD_REFINEMENT_KEY, refinement);
-            logInfo(String.format("Field %s has refinement %s", f.getSimpleName(), refinement));
-		} else {
-			logInfo(String.format("Field %s has no refinement annotation", f.getSimpleName()));
-        }
+		    CtAnnotation<? extends Annotation> ann = extractRefinement(f);
+		    if (ann != null) {
+		        f.putMetadata(Constants.FIELD_REFINEMENT_KEY, ann);
+		        logInfo(String.format("Field %s has refinement %s", f.getSimpleName(), ann.toString()));
+		    } else {
+		        logInfo(String.format("Field %s has no refinement annotation", f.getSimpleName()));
+		    }
 			maps.addFieldClass(f, klass);
 			logInfo(String.format("Added field %s to class %s in the mappings", f.getSimpleName(), klass.getSimpleName()));
 		} else {
@@ -109,17 +109,15 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		loggingSpaces--;
     }
 
-    private String extractRefinement(CtElement element) {
+	private CtAnnotation<? extends Annotation> extractRefinement(CtElement element) {
 		for (CtAnnotation<? extends Annotation> ann : element.getAnnotations()) {
 			Annotation actual = ann.getActualAnnotation();
 			if (actual instanceof Refinement refinement) {
 				String raw = refinement.value();
-				String predicate = normalize(refinement.value());
+				String predicate = normalize(raw);
 				logInfo(String.format("Parsed @Refinement on %s: raw=%s, normalized=%s",
 					describeElement(element), raw, predicate));
-				if (predicate != null) {
-					return predicate;
-				}
+				return ann;
 			}
 		}
 		logInfo(String.format("No @Refinement found on %s", describeElement(element)));
@@ -143,10 +141,10 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 
 	private void extractParameterRefinements(MethodRefinementContract contract, Iterable<? extends CtParameter<?>> parameters) {
 		for (CtParameter<?> p : parameters) {
-			String predicate = extractRefinement(p);
-			if (predicate != null) {
-				contract.addParameterRefinement(p.getSimpleName(), predicate);
-				logInfo(String.format("Parameter %s has refinement %s", p.getSimpleName(), predicate));
+			CtAnnotation<? extends Annotation> ann = extractRefinement(p);
+			if (ann != null) {
+				contract.addParameterRefinement(p.getSimpleName(), ann);
+				logInfo(String.format("Parameter %s has refinement %s", p.getSimpleName(), ann.toString()));
 			} else {
 				logInfo(String.format("Parameter %s has no refinement annotation", p.getSimpleName()));
 			}

@@ -1,5 +1,6 @@
 package context;
 
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -9,6 +10,7 @@ import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
 
+import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtField;
@@ -103,13 +105,13 @@ public class ClassLevelMaps {
         return null;
     }
 
-    public String getFieldRefinement(String fieldName, CtTypeReference<?> type) {
+    public CtAnnotation<? extends Annotation> getFieldRefinement(String fieldName, CtTypeReference<?> type) {
         CtClass<?> klass = getClassFrom(type);
         if (classFields.containsKey(klass)) {
             Map<String, CtField<?>> m = classFields.get(klass);
             if (m.containsKey(fieldName)) {
                 CtField<?> field = m.get(fieldName);
-                return (String) field.getMetadata(Constants.FIELD_REFINEMENT_KEY);
+                return (CtAnnotation<? extends Annotation>) field.getMetadata(Constants.FIELD_REFINEMENT_KEY);
             }
         }
         return null;
