@@ -17,6 +17,7 @@ import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
 import spoon.reflect.reference.CtTypeReference;
+import utils.Constants;
 
 public class RefinementFirstPass extends LatteAbstractChecker {
     public RefinementFirstPass(SymbolicEnvironment se, PermissionEnvironment pe, ClassLevelMaps mtc) {
@@ -41,18 +42,18 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		CtElement parent = f.getParent();
 		if (parent instanceof CtClass) {
 			CtClass<?> klass = (CtClass<?>) parent;
+        String refinement = extractRefinement(f);
+        if (refinement != null) {
+		    f.putMetadata(Constants.FIELD_REFINEMENT_KEY, refinement);
+            logInfo(String.format("Field %s has refinement %s", f.getSimpleName(), refinement));
+		} else {
+			logInfo(String.format("Field %s has no refinement annotation", f.getSimpleName()));
+        }
 			maps.addFieldClass(f, klass);
 			logInfo(String.format("Added field %s to class %s in the mappings", f.getSimpleName(), klass.getSimpleName()));
 		} else {
 			logWarning(String.format("Field %s has no class parent while extracting refinements", f.getSimpleName()));
 		}
-        String refinement = extractRefinement(f);
-        if (refinement != null) {
-            maps.addFieldRefinement(f, refinement);
-            logInfo(String.format("Field %s has refinement %s", f.getSimpleName(), refinement));
-		} else {
-			logInfo(String.format("Field %s has no refinement annotation", f.getSimpleName()));
-        }
         super.visitCtField(f);
 		loggingSpaces--;
     }
@@ -64,14 +65,11 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		CtElement parent = m.getParent();
 		if (parent instanceof CtClass) {
 			CtClass<?> klass = (CtClass<?>) parent;
-			maps.addMethod(klass, m);
-			logInfo(String.format("Added method %s/%d to class %s mappings",
-				m.getSimpleName(), m.getParameters().size(), klass.getSimpleName()));
-		} else {
-			logWarning(String.format("Method %s has no class parent while extracting refinements", m.getSimpleName()));
-		}
 		MethodRefinementContract contract = extractContract(m);
-		maps.addMethodContract(m, contract);
+		m.putMetadata(Constants.METHOD_CONTRACT_KEY, contract);
+		maps.addMethod(klass, m);
+		logInfo(String.format("Added method %s/%d to class %s mappings",
+			m.getSimpleName(), m.getParameters().size(), klass.getSimpleName()));
 		logInfo(String.format("Parsed method %s refinements: method=%s, params=%d, transitions=%d",
 			m.getSimpleName(),
 			contract.getMethodRefinement(),
@@ -79,6 +77,9 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 			contract.getStateTransitions().size()));
 		logInfo(String.format("Stored contract for method %s: pre=%s, post=%s", m.getSimpleName(),
 			contract.getCombinedPrecondition(), contract.getCombinedPostcondition()));
+		} else {
+			logWarning(String.format("Method %s has no class parent while extracting refinements", m.getSimpleName()));
+		}
         super.visitCtMethod(m);
 		loggingSpaces--;
     }
@@ -90,20 +91,20 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		CtElement parent = c.getParent();
 		if (parent instanceof CtClass) {
 			CtClass<?> klass = (CtClass<?>) parent;
-			maps.addConstructor(klass, c);
-			logInfo(String.format("Added constructor %s/%d to class %s mappings",
-				c.getSimpleName(), c.getParameters().size(), klass.getSimpleName()));
-		} else {
-			logWarning(String.format("Constructor %s has no class parent while extracting refinements", c.getSimpleName()));
-		}
 		MethodRefinementContract contract = extractContract(c);
-		maps.addConstructorContract(c, contract);
+		c.putMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY, contract);
+		maps.addConstructor(klass, c);
+		logInfo(String.format("Added constructor %s/%d to class %s mappings",
+			c.getSimpleName(), c.getParameters().size(), klass.getSimpleName()));
 		logInfo(String.format("Parsed constructor %s refinements: params=%d, transitions=%d",
 			c.getSimpleName(),
 			contract.getParameterRefinements().size(),
 			contract.getStateTransitions().size()));
 		logInfo(String.format("Stored contract for constructor %s: pre=%s, post=%s", c.getSimpleName(),
 			contract.getCombinedPrecondition(), contract.getCombinedPostcondition()));
+		} else {
+			logWarning(String.format("Constructor %s has no class parent while extracting refinements", c.getSimpleName()));
+		}
         super.visitCtConstructor(c);
 		loggingSpaces--;
     }
