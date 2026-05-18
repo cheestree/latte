@@ -1,6 +1,5 @@
 package context;
 
-import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -10,16 +9,16 @@ import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
 
-import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.reference.CtTypeReference;
 import utils.Constants;
+import rj_language.ast.Expression;
 
 public class ClassLevelMaps {
-   
+
     static ClassLevelMaps instance;
     Map<CtTypeReference<?>, CtClass<?>> typeClassMap;
     Map<CtClass<?>, Map<String, CtField<?>>> classFields;
@@ -105,13 +104,13 @@ public class ClassLevelMaps {
         return null;
     }
 
-    public CtAnnotation<? extends Annotation> getFieldRefinement(String fieldName, CtTypeReference<?> type) {
+    public Expression getFieldRefinement(String fieldName, CtTypeReference<?> type) {
         CtClass<?> klass = getClassFrom(type);
         if (classFields.containsKey(klass)) {
             Map<String, CtField<?>> m = classFields.get(klass);
             if (m.containsKey(fieldName)) {
                 CtField<?> field = m.get(fieldName);
-                return (CtAnnotation<? extends Annotation>) field.getMetadata(Constants.FIELD_REFINEMENT_KEY);
+                return (Expression) field.getMetadata(Constants.FIELD_REFINEMENT_KEY);
             }
         }
         return null;

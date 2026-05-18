@@ -1,5 +1,4 @@
 import java.io.File;
-import java.lang.annotation.Annotation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -10,9 +9,9 @@ import context.ClassLevelMaps;
 import context.MethodRefinementContract;
 import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
+import rj_language.ast.Expression;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
-import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.visitor.filter.TypeFilter;
 import typechecking.RefinementFirstPass;
@@ -76,10 +75,10 @@ public class RefinementSupportTest {
         assertNotNull(readerConstructor);
         assertEquals("this.isConnected == false", readerConstructor.getCombinedPostcondition());
 
-        CtAnnotation<? extends Annotation> writerFieldRefinement = maps.getFieldRefinement("isConnected", writerClass.getReference());
+        Expression writerFieldRefinement = maps.getFieldRefinement("isConnected", writerClass.getReference());
         assertNull(writerFieldRefinement);
 
-        CtAnnotation<? extends Annotation> readerFieldRefinement = maps.getFieldRefinement("isConnected", readerClass.getReference());
+        Expression readerFieldRefinement = maps.getFieldRefinement("isConnected", readerClass.getReference());
         assertNull(readerFieldRefinement);
     }
 }

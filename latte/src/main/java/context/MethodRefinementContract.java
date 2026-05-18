@@ -1,6 +1,5 @@
 package context;
 
-import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -8,14 +7,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 
-import spoon.reflect.declaration.CtAnnotation;
+import rj_language.ast.Expression;
+import rj_language.visitors.ExpressionPrettyPrinter;
 
 /**
  * Stores refinement metadata extracted from method/constructor annotations.
  */
 public class MethodRefinementContract {
-    private CtAnnotation<? extends Annotation> methodRefinement;
-    private final Map<String, CtAnnotation<? extends Annotation>> parameterRefinements;
+    private Expression methodRefinement;
+    private final Map<String, Expression> parameterRefinements;
     private final List<StateTransition> stateTransitions;
 
     public MethodRefinementContract() {
@@ -23,29 +23,29 @@ public class MethodRefinementContract {
         this.stateTransitions = new ArrayList<>();
     }
 
-    public CtAnnotation<? extends Annotation> getMethodRefinement() {
+    public Expression getMethodRefinement() {
         return methodRefinement;
     }
 
-    public void setMethodRefinement(CtAnnotation<? extends Annotation> methodRefinement) {
+    public void setMethodRefinement(Expression methodRefinement) {
         this.methodRefinement = methodRefinement;
     }
 
-    public void addParameterRefinement(String parameterName, CtAnnotation<? extends Annotation> predicate) {
+    public void addParameterRefinement(String parameterName, Expression predicate) {
         if (parameterName != null && !parameterName.isBlank() && predicate != null) {
             parameterRefinements.put(parameterName, predicate);
         }
     }
 
-    public CtAnnotation<? extends Annotation> getParameterRefinement(String parameterName) {
+    public Expression getParameterRefinement(String parameterName) {
         return parameterRefinements.get(parameterName);
     }
 
-    public Map<String, CtAnnotation<? extends Annotation>> getParameterRefinements() {
+    public Map<String, Expression> getParameterRefinements() {
         return Collections.unmodifiableMap(parameterRefinements);
     }
 
-    public void addStateTransition(String from, String to, String msg) {
+    public void addStateTransition(Expression from, Expression to, String msg) {
         stateTransitions.add(new StateTransition(from, to, msg));
     }
 
@@ -59,8 +59,9 @@ public class MethodRefinementContract {
     public String getCombinedPrecondition() {
         StringJoiner sj = new StringJoiner(" && ");
         for (StateTransition t : stateTransitions) {
-            if (t.getFrom() != null) {
-                sj.add(t.getFrom());
+            String rendered = ExpressionPrettyPrinter.print(t.getFrom());
+            if (rendered != null) {
+                sj.add(rendered);
             }
         }
         return sj.length() == 0 ? null : sj.toString();
@@ -72,8 +73,9 @@ public class MethodRefinementContract {
     public String getCombinedPostcondition() {
         StringJoiner sj = new StringJoiner(" && ");
         for (StateTransition t : stateTransitions) {
-            if (t.getTo() != null) {
-                sj.add(t.getTo());
+            String rendered = ExpressionPrettyPrinter.print(t.getTo());
+            if (rendered != null) {
+                sj.add(rendered);
             }
         }
         return sj.length() == 0 ? null : sj.toString();
@@ -92,21 +94,21 @@ public class MethodRefinementContract {
     }
 
     public static final class StateTransition {
-        private final String from;
-        private final String to;
+        private final Expression from;
+        private final Expression to;
         private final String msg;
 
-        public StateTransition(String from, String to, String msg) {
-            this.from = normalize(from);
-            this.to = normalize(to);
+        public StateTransition(Expression from, Expression to, String msg) {
+            this.from = from;
+            this.to = to;
             this.msg = normalize(msg);
         }
 
-        public String getFrom() {
+        public Expression getFrom() {
             return from;
         }
 
-        public String getTo() {
+        public Expression getTo() {
             return to;
         }
 
