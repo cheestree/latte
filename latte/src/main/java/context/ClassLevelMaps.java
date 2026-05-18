@@ -2,8 +2,10 @@ package context;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -12,14 +14,17 @@ import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.reference.CtTypeReference;
+import utils.Constants;
+import rj_language.ast.Expression;
 
 public class ClassLevelMaps {
-   
+
     static ClassLevelMaps instance;
     Map<CtTypeReference<?>, CtClass<?>> typeClassMap;
     Map<CtClass<?>, Map<String, CtField<?>>> classFields;
     Map<CtClass<?>, Map<Integer, CtConstructor<?>>> classConstructors;
     Map<CtClass<?>, Map<Pair<String, Integer>, CtMethod<?>>> classMethods;
+    Map<String, Set<String>> ghostFields = new HashMap<>();
     
 
 
@@ -73,6 +78,19 @@ public class ClassLevelMaps {
         }
     }
 
+    public void addGhostField(String className, String fieldName) {
+        ghostFields.computeIfAbsent(className, k -> new LinkedHashSet<>())
+                .add(fieldName);
+    }
+
+    public Set<String> getGhostFields(String className) {
+        return ghostFields.getOrDefault(className, Set.of());
+    }
+
+    public boolean isGhostField(String className, String fieldName) {
+        return getGhostFields(className).contains(fieldName);
+    }
+
     public UniquenessAnnotation getFieldAnnotation(String fieldName, CtTypeReference<?> type) {
         CtClass<?> klass = getClassFrom(type);
         if (classFields.containsKey(klass)){
@@ -81,6 +99,18 @@ public class ClassLevelMaps {
                 CtField<?> field = m.get(fieldName);
                 UniquenessAnnotation annotation = new UniquenessAnnotation(field);
                 return annotation;
+            }
+        }
+        return null;
+    }
+
+    public Expression getFieldRefinement(String fieldName, CtTypeReference<?> type) {
+        CtClass<?> klass = getClassFrom(type);
+        if (classFields.containsKey(klass)) {
+            Map<String, CtField<?>> m = classFields.get(klass);
+            if (m.containsKey(fieldName)) {
+                CtField<?> field = m.get(fieldName);
+                return (Expression) field.getMetadata(Constants.FIELD_REFINEMENT_KEY);
             }
         }
         return null;
@@ -96,6 +126,14 @@ public class ClassLevelMaps {
         return null;
     }
 
+    public MethodRefinementContract getConstructorContract(CtClass<?> klass, int numParams) {
+        CtConstructor<?> c = geCtConstructor(klass, numParams);
+        if (c == null) {
+            return null;
+        }
+        return (MethodRefinementContract) c.getMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY);
+    }
+
     public CtMethod<?> getCtMethod(CtClass<?> klass, String methodName, int numParams){
         Pair<String, Integer> mPair = Pair.of(methodName, numParams);
         if (classMethods.containsKey(klass)){
@@ -106,6 +144,14 @@ public class ClassLevelMaps {
         }
         return null;
     } 
+
+    public MethodRefinementContract getMethodContract(CtClass<?> klass, String methodName, int numParams) {
+        CtMethod<?> m = getCtMethod(klass, methodName, numParams);
+        if (m == null) {
+            return null;
+        }
+        return (MethodRefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
+    }
 
     public static void simplify(SymbolicEnvironment symbEnv, PermissionEnvironment permEnv) {
         // 1) Remove unreachable values
