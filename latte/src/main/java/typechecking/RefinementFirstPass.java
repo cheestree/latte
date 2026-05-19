@@ -19,7 +19,6 @@ import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
-import spoon.reflect.declaration.CtParameter;
 import utils.Constants;
 
 public class RefinementFirstPass extends LatteAbstractChecker {
@@ -72,7 +71,7 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 			logInfo(String.format("Parsed method %s refinements: method=%s, params=%d, transitions=%d",
 				methodName,
 				ExpressionPrettyPrinter.print(contract.getMethodRefinement()),
-				contract.getParameterRefinements().size(),
+				m.getParameters().size(),
 				contract.getStateTransitions().size()));
 			logInfo(String.format("Stored contract for method %s: pre=%s, post=%s",
 				methodName,
@@ -96,7 +95,7 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 			c.putMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY, contract);
 			logInfo(String.format("Parsed constructor %s refinements: params=%d, transitions=%d",
 				constructorName,
-				contract.getParameterRefinements().size(),
+				c.getParameters().size(),
 				contract.getStateTransitions().size()));
 			logInfo(String.format("Stored contract for constructor %s: pre=%s, post=%s",
 				constructorName,
@@ -125,29 +124,14 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 	private MethodRefinementContract extractContract(CtMethod<?> method) {
 		MethodRefinementContract contract = new MethodRefinementContract();
 		contract.setMethodRefinement(extractRefinement(method));
-		extractParameterRefinements(contract, method.getParameters());
 		extractStateRefinements(contract, method);
 		return contract;
 	}
 
 	private MethodRefinementContract extractContract(CtConstructor<?> constructor) {
 		MethodRefinementContract contract = new MethodRefinementContract();
-		extractParameterRefinements(contract, constructor.getParameters());
 		extractStateRefinements(contract, constructor);
 		return contract;
-	}
-
-	private void extractParameterRefinements(MethodRefinementContract contract, Iterable<? extends CtParameter<?>> parameters) {
-		for (CtParameter<?> p : parameters) {
-			Expression refinement = extractRefinement(p);
-			if (refinement != null) {
-				contract.addParameterRefinement(p.getSimpleName(), refinement);
-				logInfo(String.format("Parameter %s has refinement %s",
-					p.getSimpleName(), ExpressionPrettyPrinter.print(refinement)));
-			} else {
-				logInfo(String.format("Parameter %s has no refinement annotation", p.getSimpleName()));
-			}
-		}
 	}
 
 	private void extractStateRefinements(MethodRefinementContract contract, CtElement executable) {
@@ -213,10 +197,6 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		if (element instanceof CtField) {
 			CtField<?> ctField = (CtField<?>) element;
 			return "field " + ctField.getSimpleName();
-		}
-		if (element instanceof CtParameter) {
-			CtParameter<?> ctParameter = (CtParameter<?>) element;
-			return "parameter " + ctParameter.getSimpleName();
 		}
 		if (element instanceof CtClass) {
 			CtClass<?> ctClass = (CtClass<?>) element;

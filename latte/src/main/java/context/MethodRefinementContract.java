@@ -15,11 +15,9 @@ import rj_language.visitors.ExpressionPrettyPrinter;
  */
 public class MethodRefinementContract {
     private Expression methodRefinement;
-    private final Map<String, Expression> parameterRefinements;
     private final List<StateTransition> stateTransitions;
 
     public MethodRefinementContract() {
-        this.parameterRefinements = new LinkedHashMap<>();
         this.stateTransitions = new ArrayList<>();
     }
 
@@ -29,20 +27,6 @@ public class MethodRefinementContract {
 
     public void setMethodRefinement(Expression methodRefinement) {
         this.methodRefinement = methodRefinement;
-    }
-
-    public void addParameterRefinement(String parameterName, Expression predicate) {
-        if (parameterName != null && !parameterName.isBlank() && predicate != null) {
-            parameterRefinements.put(parameterName, predicate);
-        }
-    }
-
-    public Expression getParameterRefinement(String parameterName) {
-        return parameterRefinements.get(parameterName);
-    }
-
-    public Map<String, Expression> getParameterRefinements() {
-        return Collections.unmodifiableMap(parameterRefinements);
     }
 
     public void addStateTransition(Expression from, Expression to, String msg) {
@@ -82,7 +66,7 @@ public class MethodRefinementContract {
     }
 
     public boolean isEmpty() {
-        return methodRefinement == null && parameterRefinements.isEmpty() && stateTransitions.isEmpty();
+        return methodRefinement == null && stateTransitions.isEmpty();
     }
 
     private static String normalize(String value) {
