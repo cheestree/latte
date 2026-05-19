@@ -53,8 +53,6 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		    } else {
 		        logInfo(String.format("Field %s has no refinement annotation", fieldName));
 		    }
-			maps.addFieldClass(f, klass);
-			logInfo(String.format("Added field %s to class %s in the mappings", fieldName, className));
 		} else {
 			logWarning(String.format("Field %s has no class parent while extracting refinements", fieldName));
 		}
@@ -65,17 +63,12 @@ public class RefinementFirstPass extends LatteAbstractChecker {
     @Override
     public <T> void visitCtMethod(CtMethod<T> m) {
 		String methodName = m.getSimpleName();
-		int params = m.getParameters().size();
 		logInfo("Visiting method: " + methodName, m);
 		loggingSpaces++;
 		CtElement parent = m.getParent();
 		if (parent instanceof CtClass) {
-			CtClass<?> klass = (CtClass<?>) parent;
 			MethodRefinementContract contract = extractContract(m);
 			m.putMetadata(Constants.METHOD_CONTRACT_KEY, contract);
-			maps.addMethod(klass, m);
-			logInfo(String.format("Added method %s/%d to class %s mappings",
-				methodName, params, klass.getSimpleName()));
 			logInfo(String.format("Parsed method %s refinements: method=%s, params=%d, transitions=%d",
 				methodName,
 				ExpressionPrettyPrinter.print(contract.getMethodRefinement()),
@@ -95,17 +88,12 @@ public class RefinementFirstPass extends LatteAbstractChecker {
     @Override
     public <T> void visitCtConstructor(CtConstructor<T> c) {
 		String constructorName = c.getSimpleName();
-		int params = c.getParameters().size();
 		logInfo("Visiting constructor: " + constructorName, c);
 		loggingSpaces++;
 		CtElement parent = c.getParent();
 		if (parent instanceof CtClass) {
-			CtClass<?> klass = (CtClass<?>) parent;
 			MethodRefinementContract contract = extractContract(c);
 			c.putMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY, contract);
-			maps.addConstructor(klass, c);
-			logInfo(String.format("Added constructor %s/%d to class %s mappings",
-				constructorName, params, klass.getSimpleName()));
 			logInfo(String.format("Parsed constructor %s refinements: params=%d, transitions=%d",
 				constructorName,
 				contract.getParameterRefinements().size(),
