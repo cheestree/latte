@@ -24,8 +24,6 @@ public class ClassLevelMaps {
     Map<CtClass<?>, Map<String, CtField<?>>> classFields;
     Map<CtClass<?>, Map<Integer, CtConstructor<?>>> classConstructors;
     Map<CtClass<?>, Map<Pair<String, Integer>, CtMethod<?>>> classMethods;
-    Map<String, Set<String>> ghostFields = new HashMap<>();
-    
 
 
     public ClassLevelMaps() {
@@ -78,17 +76,17 @@ public class ClassLevelMaps {
         }
     }
 
-    public void addGhostField(String className, String fieldName) {
-        ghostFields.computeIfAbsent(className, k -> new LinkedHashSet<>())
-                .add(fieldName);
-    }
-
-    public Set<String> getGhostFields(String className) {
-        return ghostFields.getOrDefault(className, Set.of());
-    }
-
     public boolean isGhostField(String className, String fieldName) {
-        return getGhostFields(className).contains(fieldName);
+        for (Map.Entry<CtClass<?>, Map<String, CtField<?>>> e : classFields.entrySet()) {
+            CtClass<?> klass = e.getKey();
+            if (klass.getSimpleName().equals(className)) {
+                Map<String, CtField<?>> fields = e.getValue();
+                if (fields != null && fields.containsKey(fieldName)) {
+                    return Boolean.TRUE.equals(fields.get(fieldName).getMetadata(Constants.FIELD_GHOST_KEY));
+                }
+            }
+        }
+        return false;
     }
 
     public UniquenessAnnotation getFieldAnnotation(String fieldName, CtTypeReference<?> type) {

@@ -38,6 +38,14 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		if (parent instanceof CtClass) {
 			CtClass<?> klass = (CtClass<?>) parent;
 			String className = klass.getSimpleName();
+			for (CtAnnotation<? extends Annotation> ann : f.getAnnotations()) {
+				Annotation actual = ann.getActualAnnotation();
+				if (actual != null && actual.annotationType().getSimpleName().equals("Ghost")) {
+					f.putMetadata(utils.Constants.FIELD_GHOST_KEY, Boolean.TRUE);
+					logInfo(String.format("Field %s marked as @Ghost in class %s", fieldName, className));
+					break;
+				}
+			}
 		    Expression refinement = extractRefinement(f);
 		    if (refinement != null) {
 		        f.putMetadata(Constants.FIELD_REFINEMENT_KEY, refinement);
