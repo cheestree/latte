@@ -68,15 +68,15 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		if (parent instanceof CtClass) {
 			MethodRefinementContract contract = extractContract(m);
 			m.putMetadata(Constants.METHOD_CONTRACT_KEY, contract);
-			logInfo(String.format("Parsed method %s refinements: method=%s, params=%d, transitions=%d",
+			int transitions = contract.getStateTransition() == null ? 0 : 1;
+			logInfo(String.format("Parsed method %s refinements: params=%d, transitions=%d",
 				methodName,
-				ExpressionPrettyPrinter.print(contract.getMethodRefinement()),
 				m.getParameters().size(),
-				contract.getStateTransitions().size()));
+				transitions));
 			logInfo(String.format("Stored contract for method %s: pre=%s, post=%s",
 				methodName,
-				contract.getCombinedPrecondition(),
-				contract.getCombinedPostcondition()));
+				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getFrom()),
+				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getTo())));
 		} else {
 			logWarning(String.format("Method %s has no class parent while extracting refinements", methodName));
 		}
@@ -93,14 +93,15 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		if (parent instanceof CtClass) {
 			MethodRefinementContract contract = extractContract(c);
 			c.putMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY, contract);
+			int transitions = contract.getStateTransition() == null ? 0 : 1;
 			logInfo(String.format("Parsed constructor %s refinements: params=%d, transitions=%d",
 				constructorName,
 				c.getParameters().size(),
-				contract.getStateTransitions().size()));
+				transitions));
 			logInfo(String.format("Stored contract for constructor %s: pre=%s, post=%s",
 				constructorName,
-				contract.getCombinedPrecondition(),
-				contract.getCombinedPostcondition()));
+				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getFrom()),
+				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getTo())));
 		} else {
 			logWarning(String.format("Constructor %s has no class parent while extracting refinements", constructorName));
 		}

@@ -1,24 +1,16 @@
 package context;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.StringJoiner;
-
 import rj_language.ast.Expression;
-import rj_language.visitors.ExpressionPrettyPrinter;
 
 /**
  * Stores refinement metadata extracted from method/constructor annotations.
  */
 public class MethodRefinementContract {
     private Expression methodRefinement;
-    private final List<StateTransition> stateTransitions;
+    private StateTransition stateTransition;
 
     public MethodRefinementContract() {
-        this.stateTransitions = new ArrayList<>();
+        this.stateTransition = null;
     }
 
     public Expression getMethodRefinement() {
@@ -30,43 +22,16 @@ public class MethodRefinementContract {
     }
 
     public void addStateTransition(Expression from, Expression to, String msg) {
-        stateTransitions.add(new StateTransition(from, to, msg));
+        this.stateTransition = new StateTransition(from, to, msg);
     }
 
-    public List<StateTransition> getStateTransitions() {
-        return Collections.unmodifiableList(stateTransitions);
+    public StateTransition getStateTransition() {
+        return stateTransition;
     }
 
-    /**
-     * Combined precondition equivalent to conjunction of all non-empty from predicates.
-     */
-    public String getCombinedPrecondition() {
-        StringJoiner sj = new StringJoiner(" && ");
-        for (StateTransition t : stateTransitions) {
-            String rendered = ExpressionPrettyPrinter.print(t.getFrom());
-            if (rendered != null) {
-                sj.add(rendered);
-            }
-        }
-        return sj.length() == 0 ? null : sj.toString();
-    }
-
-    /**
-     * Combined postcondition equivalent to conjunction of all non-empty to predicates.
-     */
-    public String getCombinedPostcondition() {
-        StringJoiner sj = new StringJoiner(" && ");
-        for (StateTransition t : stateTransitions) {
-            String rendered = ExpressionPrettyPrinter.print(t.getTo());
-            if (rendered != null) {
-                sj.add(rendered);
-            }
-        }
-        return sj.length() == 0 ? null : sj.toString();
-    }
 
     public boolean isEmpty() {
-        return methodRefinement == null && stateTransitions.isEmpty();
+        return methodRefinement == null && stateTransition == null;
     }
 
     private static String normalize(String value) {

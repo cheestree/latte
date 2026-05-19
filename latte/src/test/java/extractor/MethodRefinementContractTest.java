@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import context.ClassLevelMaps;
 import context.MethodRefinementContract;
+import rj_language.visitors.ExpressionPrettyPrinter;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.visitor.filter.TypeFilter;
 import helpers.TestModelHelper;
@@ -25,7 +26,9 @@ public class MethodRefinementContractTest {
 
         MethodRefinementContract writerConnect = maps.getMethodContract(writerClass, "connect", 1);
         assertNotNull(writerConnect);
-        assertEquals("this.isConnected == false && reader.isConnected == false", writerConnect.getCombinedPrecondition());
-        assertEquals("this.isConnected == true && reader.isConnected == true", writerConnect.getCombinedPostcondition());
+        assertEquals("this.isConnected == false && reader.isConnected == false",
+            ExpressionPrettyPrinter.print(writerConnect.getStateTransition().getFrom()));
+        assertEquals("this.isConnected == true && reader.isConnected == true",
+            ExpressionPrettyPrinter.print(writerConnect.getStateTransition().getTo()));
     }
 }
