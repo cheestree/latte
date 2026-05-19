@@ -125,17 +125,17 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 	private MethodRefinementContract extractContract(CtMethod<?> method) {
 		MethodRefinementContract contract = new MethodRefinementContract();
 		contract.setMethodRefinement(extractRefinement(method));
-		extractStateRefinements(contract, method);
+		extractStateRefinement(contract, method);
 		return contract;
 	}
 
 	private MethodRefinementContract extractContract(CtConstructor<?> constructor) {
 		MethodRefinementContract contract = new MethodRefinementContract();
-		extractStateRefinements(contract, constructor);
+		extractStateRefinement(contract, constructor);
 		return contract;
 	}
 
-	private void extractStateRefinements(MethodRefinementContract contract, CtElement executable) {
+	private void extractStateRefinement(MethodRefinementContract contract, CtElement executable) {
 		boolean hasStateRefinement = false;
 		for (CtAnnotation<? extends Annotation> ann : executable.getAnnotations()) {
 			Annotation actual = ann.getActualAnnotation();
