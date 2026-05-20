@@ -2,15 +2,14 @@ package extractor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-
 import org.junit.jupiter.api.Test;
 
 import context.ClassLevelMaps;
 import context.MethodRefinementContract;
+import helpers.TestModelHelper;
 import rj_language.visitors.ExpressionPrettyPrinter;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.visitor.filter.TypeFilter;
-import helpers.TestModelHelper;
 
 public class MethodRefinementContractTest {
     @Test
@@ -27,8 +26,8 @@ public class MethodRefinementContractTest {
         MethodRefinementContract writerConnect = maps.getMethodContract(writerClass, "connect", 1);
         assertNotNull(writerConnect);
         assertEquals("this.isConnected == false && reader.isConnected == false",
-            ExpressionPrettyPrinter.print(writerConnect.getStateTransition().getFrom()));
+            ExpressionPrettyPrinter.print(writerConnect.getFrom()));
         assertEquals("this.isConnected == true && reader.isConnected == true",
-            ExpressionPrettyPrinter.print(writerConnect.getStateTransition().getTo()));
+            ExpressionPrettyPrinter.print(writerConnect.getTo()));
     }
 }

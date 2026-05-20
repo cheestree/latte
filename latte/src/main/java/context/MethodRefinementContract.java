@@ -7,10 +7,14 @@ import rj_language.ast.Expression;
  */
 public class MethodRefinementContract {
     private Expression methodRefinement;
-    private StateTransition stateTransition;
+    private Expression from;
+    private Expression to;
+    private String msg;
 
     public MethodRefinementContract() {
-        this.stateTransition = null;
+        this.from = null;
+        this.to = null;
+        this.msg = null;
     }
 
     public Expression getMethodRefinement() {
@@ -22,47 +26,25 @@ public class MethodRefinementContract {
     }
 
     public void addStateTransition(Expression from, Expression to, String msg) {
-        this.stateTransition = new StateTransition(from, to, msg);
+        this.from = from;
+        this.to = to;
+        this.msg = msg;
     }
 
-    public StateTransition getStateTransition() {
-        return stateTransition;
+    public Expression getFrom() {
+        return from;
+    }
+
+    public Expression getTo() {
+        return to;
+    }
+
+    public String getMsg() {
+        return msg;
     }
 
 
     public boolean isEmpty() {
-        return methodRefinement == null && stateTransition == null;
-    }
-
-    private static String normalize(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    public static final class StateTransition {
-        private final Expression from;
-        private final Expression to;
-        private final String msg;
-
-        public StateTransition(Expression from, Expression to, String msg) {
-            this.from = from;
-            this.to = to;
-            this.msg = normalize(msg);
-        }
-
-        public Expression getFrom() {
-            return from;
-        }
-
-        public Expression getTo() {
-            return to;
-        }
-
-        public String getMsg() {
-            return msg;
-        }
+        return methodRefinement == null && from == null && to == null;
     }
 }

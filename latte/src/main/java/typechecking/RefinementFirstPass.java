@@ -34,8 +34,7 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		logInfo("Visiting field: " + fieldName, f);
 		loggingSpaces++;
 		CtElement parent = f.getParent();
-		if (parent instanceof CtClass) {
-			CtClass<?> klass = (CtClass<?>) parent;
+		if (parent instanceof CtClass klass) {
 			String className = klass.getSimpleName();
 			for (CtAnnotation<? extends Annotation> ann : f.getAnnotations()) {
 				Annotation actual = ann.getActualAnnotation();
@@ -68,15 +67,15 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		if (parent instanceof CtClass) {
 			MethodRefinementContract contract = extractContract(m);
 			m.putMetadata(Constants.METHOD_CONTRACT_KEY, contract);
-			int transitions = contract.getStateTransition() == null ? 0 : 1;
+			int transitions = contract.getFrom() == null ? 0 : 1;
 			logInfo(String.format("Parsed method %s refinements: params=%d, transitions=%d",
 				methodName,
 				m.getParameters().size(),
 				transitions));
 			logInfo(String.format("Stored contract for method %s: pre=%s, post=%s",
 				methodName,
-				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getFrom()),
-				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getTo())));
+				ExpressionPrettyPrinter.print(contract.getFrom()),
+				ExpressionPrettyPrinter.print(contract.getTo())));
 		} else {
 			logWarning(String.format("Method %s has no class parent while extracting refinements", methodName));
 		}
@@ -93,15 +92,15 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		if (parent instanceof CtClass) {
 			MethodRefinementContract contract = extractContract(c);
 			c.putMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY, contract);
-			int transitions = contract.getStateTransition() == null ? 0 : 1;
+			int transitions = contract.getFrom() == null ? 0 : 1;
 			logInfo(String.format("Parsed constructor %s refinements: params=%d, transitions=%d",
 				constructorName,
 				c.getParameters().size(),
 				transitions));
 			logInfo(String.format("Stored contract for constructor %s: pre=%s, post=%s",
 				constructorName,
-				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getFrom()),
-				ExpressionPrettyPrinter.print(contract.getStateTransition() == null ? null : contract.getStateTransition().getTo())));
+				ExpressionPrettyPrinter.print(contract.getFrom()),
+				ExpressionPrettyPrinter.print(contract.getTo())));
 		} else {
 			logWarning(String.format("Constructor %s has no class parent while extracting refinements", constructorName));
 		}
@@ -109,6 +108,11 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		loggingSpaces--;
     }
 
+	/***
+	 * Extracts the refinement expression from the @Refinement annotation on the given element, if present.
+	 * @param element
+	 * @return the parsed refinement expression, or null if no @Refinement annotation is found or if parsing fails
+	 */
 	private Expression extractRefinement(CtElement element) {
 		for (CtAnnotation<? extends Annotation> ann : element.getAnnotations()) {
 			Annotation actual = ann.getActualAnnotation();
@@ -135,6 +139,11 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		return contract;
 	}
 
+	/***
+	 * Extracts state refinement transitions from @StateRefinement and @StateRefinementMultiple annotations on the given executable element (method or constructor) and adds them to the provided contract.
+	 * @param contract the MethodRefinementContract to which the extracted state transitions will be added
+	 * @param executable the method or constructor element from which to extract state refinements
+	 */
 	private void extractStateRefinement(MethodRefinementContract contract, CtElement executable) {
 		boolean hasStateRefinement = false;
 		for (CtAnnotation<? extends Annotation> ann : executable.getAnnotations()) {
