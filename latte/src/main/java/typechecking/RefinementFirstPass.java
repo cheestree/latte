@@ -3,20 +3,19 @@ package typechecking;
 import java.lang.annotation.Annotation;
 
 import context.ClassLevelMaps;
-import context.MethodRefinementContract;
 import context.PermissionEnvironment;
+import context.RefinementContract;
 import context.SymbolicEnvironment;
 import rj_language.ast.Expression;
 import rj_language.parsing.ParsingException;
 import rj_language.parsing.RefinementsParser;
-import rj_language.visitors.ExpressionPrettyPrinter;
 import specification.lj.Refinement;
 import specification.lj.StateRefinement;
-import specification.lj.StateRefinementMultiple;
 import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
+import spoon.reflect.declaration.CtExecutable;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import utils.Constants;
@@ -34,25 +33,18 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		logInfo("Visiting field: " + fieldName, f);
 		loggingSpaces++;
 		CtElement parent = f.getParent();
-		if (parent instanceof CtClass klass) {
-			String className = klass.getSimpleName();
+		if (parent instanceof CtClass) {
 			for (CtAnnotation<? extends Annotation> ann : f.getAnnotations()) {
 				Annotation actual = ann.getActualAnnotation();
 				if (actual != null && actual.annotationType().getSimpleName().equals("Ghost")) {
 					f.putMetadata(utils.Constants.FIELD_GHOST_KEY, Boolean.TRUE);
-					logInfo(String.format("Field %s marked as @Ghost in class %s", fieldName, className));
 					break;
 				}
 			}
-		    Expression refinement = extractRefinement(f);
-		    if (refinement != null) {
-		        f.putMetadata(Constants.FIELD_REFINEMENT_KEY, refinement);
-		        logInfo(String.format("Field %s has refinement %s", fieldName, ExpressionPrettyPrinter.print(refinement)));
-		    } else {
-		        logInfo(String.format("Field %s has no refinement annotation", fieldName));
-		    }
-		} else {
-			logWarning(String.format("Field %s has no class parent while extracting refinements", fieldName));
+			Expression refinement = extractRefinement(f);
+			if (refinement != null) {
+				f.putMetadata(Constants.FIELD_REFINEMENT_KEY, refinement);
+			}
 		}
         super.visitCtField(f);
 		loggingSpaces--;
@@ -65,19 +57,8 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		loggingSpaces++;
 		CtElement parent = m.getParent();
 		if (parent instanceof CtClass) {
-			MethodRefinementContract contract = extractContract(m);
+			RefinementContract contract = extractContract(m);
 			m.putMetadata(Constants.METHOD_CONTRACT_KEY, contract);
-			int transitions = contract.getFrom() == null ? 0 : 1;
-			logInfo(String.format("Parsed method %s refinements: params=%d, transitions=%d",
-				methodName,
-				m.getParameters().size(),
-				transitions));
-			logInfo(String.format("Stored contract for method %s: pre=%s, post=%s",
-				methodName,
-				ExpressionPrettyPrinter.print(contract.getFrom()),
-				ExpressionPrettyPrinter.print(contract.getTo())));
-		} else {
-			logWarning(String.format("Method %s has no class parent while extracting refinements", methodName));
 		}
         super.visitCtMethod(m);
 		loggingSpaces--;
@@ -90,19 +71,8 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		loggingSpaces++;
 		CtElement parent = c.getParent();
 		if (parent instanceof CtClass) {
-			MethodRefinementContract contract = extractContract(c);
+			RefinementContract contract = extractContract(c);
 			c.putMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY, contract);
-			int transitions = contract.getFrom() == null ? 0 : 1;
-			logInfo(String.format("Parsed constructor %s refinements: params=%d, transitions=%d",
-				constructorName,
-				c.getParameters().size(),
-				transitions));
-			logInfo(String.format("Stored contract for constructor %s: pre=%s, post=%s",
-				constructorName,
-				ExpressionPrettyPrinter.print(contract.getFrom()),
-				ExpressionPrettyPrinter.print(contract.getTo())));
-		} else {
-			logWarning(String.format("Constructor %s has no class parent while extracting refinements", constructorName));
 		}
         super.visitCtConstructor(c);
 		loggingSpaces--;
@@ -117,109 +87,38 @@ public class RefinementFirstPass extends LatteAbstractChecker {
 		for (CtAnnotation<? extends Annotation> ann : element.getAnnotations()) {
 			Annotation actual = ann.getActualAnnotation();
 			if (actual instanceof Refinement refinement) {
-				String value = normalize(refinement.value());
-				logInfo(String.format("Parsed @Refinement on %s: value=%s", describeElement(element), value));
-				return parsePredicate(value, element, "@Refinement");
+				return getExpression(refinement.value());
 			}
 		}
-		logInfo(String.format("No @Refinement found on %s", describeElement(element)));
 		return null;
 	}
 
-	private MethodRefinementContract extractContract(CtMethod<?> method) {
-		MethodRefinementContract contract = new MethodRefinementContract();
-		contract.setMethodRefinement(extractRefinement(method));
-		extractStateRefinement(contract, method);
-		return contract;
-	}
-
-	private MethodRefinementContract extractContract(CtConstructor<?> constructor) {
-		MethodRefinementContract contract = new MethodRefinementContract();
-		extractStateRefinement(contract, constructor);
-		return contract;
-	}
-
 	/***
-	 * Extracts state refinement transitions from @StateRefinement and @StateRefinementMultiple annotations on the given executable element (method or constructor) and adds them to the provided contract.
-	 * @param contract the MethodRefinementContract to which the extracted state transitions will be added
-	 * @param executable the method or constructor element from which to extract state refinements
+	 * Extracts the state transition contract from the @StateRefinement annotation on the given executable, if present.
+	 * Parses the 'from' and 'to' predicates and the custom error message, and returns them as a RefinementContract object. If parsing fails, logs a warning and returns a contract with null predicates and the provided message (if any).
+	 * @param executable
+	 * @return a RefinementContract containing the parsed 'from' and 'to' predicates and the custom error message, or null if no @StateRefinement annotation is found
 	 */
-	private void extractStateRefinement(MethodRefinementContract contract, CtElement executable) {
-		boolean hasStateRefinement = false;
+	private RefinementContract extractContract(CtExecutable<?> executable) {
+		Expression from = null, to = null;
+		String msg = null;
 		for (CtAnnotation<? extends Annotation> ann : executable.getAnnotations()) {
-			Annotation actual = ann.getActualAnnotation();
-			if (actual instanceof StateRefinement stateRefinement) {
-				hasStateRefinement = true;
-				addStateTransition(contract, stateRefinement);
-			} else if (actual instanceof StateRefinementMultiple stateRefinementMultiple) {
-				hasStateRefinement = true;
-				logInfo(String.format("Found @StateRefinementMultiple on %s with %d transitions",
-					describeElement(executable), stateRefinementMultiple.value().length));
-				for (StateRefinement stateRefinement : stateRefinementMultiple.value()) {
-					addStateTransition(contract, stateRefinement);
-				}
+			if (ann.getActualAnnotation() instanceof StateRefinement stateRefinement) {
+				from = getExpression(stateRefinement.from());
+				to = getExpression(stateRefinement.to());
+				msg = stateRefinement.msg();
 			}
 		}
-		if (!hasStateRefinement) {
-			logInfo(String.format("No state refinements found on %s", describeElement(executable)));
-		}
+		return new RefinementContract(from, to, msg);	
 	}
 
-	private void addStateTransition(MethodRefinementContract contract, StateRefinement stateRefinement) {
-		String from = normalize(stateRefinement.from());
-		String to = normalize(stateRefinement.to());
-		String msg = normalize(stateRefinement.msg());
-		logInfo(String.format("Parsed state transition: from=%s, to=%s, msg=%s", from, to, msg));
-		Expression fromExpr = parsePredicate(from, null, "@StateRefinement.from");
-		Expression toExpr = parsePredicate(to, null, "@StateRefinement.to");
-		contract.addStateTransition(
-			fromExpr,
-			toExpr,
-			msg);
-	}
-
-	private Expression parsePredicate(String predicate, CtElement element, String label) {
-		String normalized = normalize(predicate);
-		if (normalized == null) {
-			return null;
-		}
+	private Expression getExpression(String predicate) {
+		if (predicate == null || predicate.isBlank()) return null;
 		try {
-			return RefinementsParser.createAST(normalized);
+			return RefinementsParser.createAST(predicate);
 		} catch (ParsingException e) {
-			String location = element == null ? label : label + " on " + describeElement(element);
-			logWarning(String.format("Failed to parse %s: %s", location, normalized));
+			logWarning("Failed to parse predicate: " + predicate + ". Error: " + e.getMessage());
 			return null;
 		}
-	}
-
-	private String describeElement(CtElement element) {
-		if (element == null) {
-			return "unknown element";
-		}
-		if (element instanceof CtMethod) {
-			CtMethod<?> ctMethod = (CtMethod<?>) element;
-			return "method " + ctMethod.getSimpleName();
-		}
-		if (element instanceof CtConstructor) {
-			CtConstructor<?> ctConstructor = (CtConstructor<?>) element;
-			return "constructor " + ctConstructor.getSimpleName();
-		}
-		if (element instanceof CtField) {
-			CtField<?> ctField = (CtField<?>) element;
-			return "field " + ctField.getSimpleName();
-		}
-		if (element instanceof CtClass) {
-			CtClass<?> ctClass = (CtClass<?>) element;
-			return "class " + ctClass.getSimpleName();
-		}
-		return element.getClass().getSimpleName();
-	}
-
-	private String normalize(String value) {
-		if (value == null) {
-			return null;
-		}
-		String trimmed = value.trim();
-		return trimmed.isEmpty() ? null : trimmed;
 	}
 }

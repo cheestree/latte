@@ -2,10 +2,8 @@ package context;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -124,12 +122,12 @@ public class ClassLevelMaps {
         return null;
     }
 
-    public MethodRefinementContract getConstructorContract(CtClass<?> klass, int numParams) {
+    public RefinementContract getConstructorContract(CtClass<?> klass, int numParams) {
         CtConstructor<?> c = geCtConstructor(klass, numParams);
         if (c == null) {
             return null;
         }
-        return (MethodRefinementContract) c.getMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY);
+        return (RefinementContract) c.getMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY);
     }
 
     public CtMethod<?> getCtMethod(CtClass<?> klass, String methodName, int numParams){
@@ -143,12 +141,12 @@ public class ClassLevelMaps {
         return null;
     } 
 
-    public MethodRefinementContract getMethodContract(CtClass<?> klass, String methodName, int numParams) {
+    public RefinementContract getMethodContract(CtClass<?> klass, String methodName, int numParams) {
         CtMethod<?> m = getCtMethod(klass, methodName, numParams);
         if (m == null) {
             return null;
         }
-        return (MethodRefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
+        return (RefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
     }
 
     public static void simplify(SymbolicEnvironment symbEnv, PermissionEnvironment permEnv) {

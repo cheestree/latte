@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.junit.jupiter.api.Test;
 
 import context.ClassLevelMaps;
-import context.MethodRefinementContract;
+import context.RefinementContract;
 import helpers.TestModelHelper;
 import rj_language.visitors.ExpressionPrettyPrinter;
 import spoon.reflect.declaration.CtClass;
@@ -23,7 +23,7 @@ public class MethodRefinementContractTest {
             .findFirst()
             .orElseThrow();
 
-        MethodRefinementContract writerConnect = maps.getMethodContract(writerClass, "connect", 1);
+        RefinementContract writerConnect = maps.getMethodContract(writerClass, "connect", 1);
         assertNotNull(writerConnect);
         assertEquals("this.isConnected == false && reader.isConnected == false",
             ExpressionPrettyPrinter.print(writerConnect.getFrom()));
