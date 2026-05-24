@@ -5,6 +5,7 @@ import java.util.List;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementPath;
 import context.SymbolicEnvironment;
 import spoon.processing.AbstractProcessor;
 import spoon.reflect.declaration.CtPackage;
@@ -24,12 +25,13 @@ public class LatteProcessor extends AbstractProcessor<CtPackage> {
         SymbolicEnvironment se = new SymbolicEnvironment();
         PermissionEnvironment pe = new PermissionEnvironment();
         ClassLevelMaps mtc = new ClassLevelMaps();
+        RefinementPath rp = new RefinementPath();
         
         if (!visitedPackages.contains(pkg)) {
             visitedPackages.add(pkg);
-            pkg.accept(new LatteClassFirstPass( se, pe, mtc));
-            pkg.accept(new LatteTypeChecker( se, pe, mtc));
-            pkg.accept(new RefinementFirstPass( se, pe, mtc));
+            pkg.accept(new LatteClassFirstPass(se, pe, mtc));
+            pkg.accept(new RefinementFirstPass(se, pe, mtc));
+            pkg.accept(new TypeChecker(se, pe, mtc, rp));
         }
 
     }
