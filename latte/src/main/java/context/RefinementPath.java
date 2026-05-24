@@ -1,5 +1,6 @@
 package context;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import rj_language.ast.BinaryExpression;
@@ -15,11 +16,11 @@ public class RefinementPath {
     }
 
     public RefinementPath(List<Expression> path) {
-        this.path = path;
+        this.path = List.copyOf(path);
     }
 
     public RefinementPath addExpression(Expression contract) {
-        List<Expression> newPath = List.copyOf(path);
+        List<Expression> newPath = new ArrayList<>(path);
         newPath.add(contract);
         return new RefinementPath(newPath);
     }

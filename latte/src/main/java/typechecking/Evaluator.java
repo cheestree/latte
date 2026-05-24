@@ -49,12 +49,15 @@ public class Evaluator {
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
+		// T-Pred-var / T-Pred-field dispatch: variables and fields are first
+		// evaluated to symbolic values, then checked against alpha > shared.
 		if (expression instanceof Var var) {
 			return evalVar(var, symbEnv, permEnv, refinementPath);
 		}
 		if (expression instanceof FieldAccess fieldAccess) {
 			return evalFieldAccess(fieldAccess, typeEnv, symbEnv, permEnv, refinementPath);
 		}
+		// Pred-const: constants, including result, do not update Delta/Sigma/phi.
 		if (expression instanceof LiteralBoolean
 			|| expression instanceof LiteralInt
 			|| expression instanceof LiteralReal
@@ -62,6 +65,8 @@ public class Evaluator {
 			|| expression instanceof ReturnExpression) {
 			return new PredicateEvalResult(expression, symbEnv, permEnv, refinementPath);
 		}
+		// T-Pred: recursively validate operands left-to-right and thread
+		// Delta/Sigma/phi through the sub-derivations.
 		if (expression instanceof UnaryExpression unaryExpression) {
 			PredicateEvalResult operand = evalExpression(
 				unaryExpression.getExpression(), typeEnv, symbEnv, permEnv, refinementPath);
@@ -94,13 +99,12 @@ public class Evaluator {
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
+		// T-Pred-var premise 1: EvalVar gives Delta(x) = nu and Sigma(nu) != bottom.
 		String name = var.getName();
 		SymbolicValue value = requireSymbolicValue(name, symbEnv);
 		UniquenessAnnotation perm = requirePermission(value, permEnv, "variable", name);
-		ensureNonShared(perm, "variable", name);
-		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-			throw new IllegalStateException("Permission check failed for variable " + name + " with " + perm);
-		}
+		// T-Pred-var premises 2-3: use the value only if alpha > shared.
+		ensurePredicatePermission(perm, "variable", name);
 		return new PredicateEvalResult(new Var(value.toString()), symbEnv, permEnv, refinementPath);
 	}
 
@@ -110,6 +114,7 @@ public class Evaluator {
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
+		// T-Pred-field premise 1: evaluate x.f through the same field cases as EvalField.
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
 			throw new IllegalStateException("Only variable receivers are supported in predicates: " + receiverExpr);
@@ -149,10 +154,8 @@ public class Evaluator {
 		}
 
 		UniquenessAnnotation fieldPerm = requirePermission(fieldValue, permEnv, "field", receiverName + "." + fieldName);
-		ensureNonShared(fieldPerm, "field", receiverName + "." + fieldName);
-		if (!permEnv.usePermissionAs(fieldValue, fieldPerm, fieldPerm)) {
-			throw new IllegalStateException("Permission check failed for field " + receiverName + "." + fieldName + " with " + fieldPerm);
-		}
+		// T-Pred-field premises 2-3: the resulting field value must have alpha > shared.
+		ensurePredicatePermission(fieldPerm, "field", receiverName + "." + fieldName);
 
 		return new PredicateEvalResult(new Var(fieldValue.toString()), symbEnv, permEnv, refinementPath);
 	}
@@ -203,7 +206,10 @@ public class Evaluator {
 		return perm;
 	}
 
-	private void ensureNonShared(UniquenessAnnotation perm, String kind, String name) {
+	private void ensurePredicatePermission(UniquenessAnnotation perm, String kind, String name) {
+		if (perm.isBottom()) {
+			throw new IllegalStateException("Predicate uses inaccessible " + kind + " " + name + " with " + perm);
+		}
 		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
 			throw new IllegalStateException("Predicate uses shared " + kind + " " + name + " with " + perm);
 		}

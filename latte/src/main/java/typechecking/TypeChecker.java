@@ -70,13 +70,14 @@ public class TypeChecker extends LatteAbstractChecker {
 	@Override
 	public <T> void visitCtConstructor(CtConstructor<T> constructor) {
 		logInfo("Visiting constructor <" + constructor.getSimpleName() + ">", constructor);
+		// T-wf: prepare ρ_pre/ρ_post before Γ; Δ; Σ are extended with formals.
 		ContractContext ctx = beginConstructorContract(constructor);
 		if (ctx != null) {
 			contractStack.push(ctx);
 		}
 		enterScopes();
 
-		// Assume 'this' is a parameter always borrowed
+		// T-wf: Δ(this)=𝜈₀ and Σ(𝜈₀)=borrowed.
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 		if (ctx != null && ctx.expectedParams == 0) {
@@ -91,17 +92,32 @@ public class TypeChecker extends LatteAbstractChecker {
 		}
 	}
 
-    // TODO: Check
+	/**
+	 * T-Method
+	 * Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′ ⊣ Γ₁; Δ₁; Σ₁; 𝜑₁
+	 * Γ₁; Δ₁; Σ₁; 𝜑₁ ∧ ρ_pre′ ⊢ s̄ ⊣ Γ₂; Δ₂; Σ₂; 𝜑₂
+	 * Γ₂; Δ₂; Σ₂; 𝜑₂ ⊢ xᵣ ⇓ 𝜈ᵣ ⊣ Γ₃; Δ₃; Σ₃; 𝜑₃
+	 * Σ₃ ⊢ 𝜈ᵣ : α ⊣ Σ₄
+	 * Γ₃ ⊢ xᵣ : C
+	 * Γ₃; Δ₃; Σ₄; 𝜑₃ ⊢ₒ ρ_post ⇓ ρ_post′ ⊣ Γ₄; Δ₄; Σ₅; 𝜑₄
+	 * Γ₄; Δ₄; Σ₅; 𝜑₄ ⊢SMT ρ_post′[𝜈ᵣ/result]
+	 * --------------------------------------------------------------------------------
+	 * Γ, Δ, Σ, 𝜑 ⊢ (ρ_pre >> ρ_post) α C m(α₀ C₀ this, αₙ Cₙ x̄) { s̄ return xᵣ; }
+	 *
+	 * T-Method-void: same shape, without xᵣ ⇓ 𝜈ᵣ, Σ ⊢ 𝜈ᵣ : α, and [𝜈ᵣ/result].
+	 * Phase 3.1 implements ρ_pre evaluation and return permission checks.
+	 */
 	@Override
 	public <T> void visitCtMethod(CtMethod<T> method) {
 		logInfo("Visiting method <" + method.getSimpleName() + ">", method);
+		// T-wf: prepare ρ_pre/ρ_post before Γ; Δ; Σ are extended with formals.
 		ContractContext ctx = beginMethodContract(method);
 		if (ctx != null) {
 			contractStack.push(ctx);
 		}
 		enterScopes();
 
-		// Assume 'this' is a parameter always borrowed
+		// T-wf: Δ(this)=𝜈₀ and Σ(𝜈₀)=borrowed.
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 		if (ctx != null && ctx.expectedParams == 0) {
@@ -121,65 +137,63 @@ public class TypeChecker extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtParameter(parameter);
 		
+		CtTypeReference<?> type = parameter.getType();
+		// T-wf: Γ(x)=C, Δ(x)=𝜈, and Σ(𝜈)=α.
 		SymbolicValue sv = symbEnv.addVariable(parameter.getSimpleName());
 		UniquenessAnnotation ua = new UniquenessAnnotation(parameter);
 		permEnv.add(sv, ua);
 		logInfo(parameter.getSimpleName() + ": "+ sv);
 		logInfo(sv + ": "+ ua);
 
+		// T-Method/T-Method-void: evaluate ρ_pre once all formals are in Γ; Δ; Σ.
+		ContractContext ctx = currentContract();
+		if (ctx != null) {
+			ctx.typeEnv.put(parameter.getSimpleName(), type);
+			ctx.seenParams++;
+			if (ctx.seenParams == ctx.expectedParams) {
+				evaluatePreIfNeeded(ctx, parameter);
+			}
+		}
+
 		loggingSpaces--;
 	}
 
 	/**
-	 * Visit Local Variable that can have only the variable declaration, or also an assignment
-	 * Rules: CheckVarDecl + CheckVarAssign + CheckNew
 	 * CheckVarDecl
 	 *                     fresh 𝜈
-	 * -----------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝐶 𝑥; ⊣ Γ[𝑥 ↦ → 𝐶]; 𝑥 : 𝜈, Δ; 𝑥 : ⊥, Σ
+	 * -------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ C x; ⊣ Γ[x ↦ C]; x:𝜈, Δ; 𝜈:⊥, Σ; 𝜑
 	 * 
 	 * CheckVarAssign
-	 * Γ(𝑥) = 𝐶 Γ ⊢ 𝑒 : 𝐶 Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; Δ′ [𝑥 ↦ → 𝜈]; Σ′ ⪰ Δ′′; Σ′′
-	 * ------------------------------------------------------------------------
-	 *             Γ; Δ; Σ ⊢ 𝑥 = 𝑒; ⊣ Γ; Δ′′; Σ′′;
-	 * 
-	 * 
-	 * CheckNew
-	 * ctor(𝐶) = 𝐶 (𝛼1 𝐶1 𝑥1, ..., 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
-	 * Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒1, ..., 𝑒𝑛 : 𝐶1, ... , 𝐶𝑛
-	 * Γ; Δ; Σ ⊢ 𝑒1, ... , 𝑒𝑛 ⇓ 𝜈1, ... , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ Σ′ ⊢ 𝑒1, ... , 𝑒𝑛 : 𝛼1, ... , 𝛼𝑛 ⊣ Σ′′
-	 * distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
-	 * Δ′ [𝑦 ↦ → 𝜈′]; Σ′′ [𝜈 ↦ → free] ⪰ Δ′′; Σ′′′
-	 * ------------------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑦 = new 𝐶 (𝑒1, ..., 𝑒𝑛 ); ⊣ Γ; Δ′′; Σ′′′
-	 * 
+	 * Γ(x)=C    Γ ⊢ e:C
+	 * Γ; Δ; Σ; 𝜑 ⊢ e ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
+	 * Δ′[x ↦ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+	 * -----------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ x = e; ⊣ Γ; Δ′′; Σ′′; 𝜑′
 	 */
-    // TODO: Check
 	@Override
 	public <T> void visitCtLocalVariable(CtLocalVariable<T> localVariable) {
 		logInfo("Visiting local variable <" + localVariable.getSimpleName() + ">", localVariable);
 		loggingSpaces++;
-        // CheckVarDecl
-		// 1) Add the variable to the typing context
 		
 		String name = localVariable.getSimpleName();
+		// CheckVarDecl: fresh 𝜈; Δ[x ↦ 𝜈]; Σ[𝜈 ↦ ⊥].
 		SymbolicValue v = symbEnv.addVariable(name);
 		permEnv.add(v, new UniquenessAnnotation(Uniqueness.BOTTOM));
 
-		// 2) Visit
+		// CheckVarAssign: Γ; Δ; Σ; 𝜑 ⊢ e ⇓ 𝜈.
 		super.visitCtLocalVariable(localVariable);
 
-		// CheckVarAssign
-		// 3) Handle assignment
 		CtElement value = localVariable.getAssignment();
 		if (value != null) {
+			// CheckVarAssign: get RHS 𝜈 from the evaluated expression.
 			SymbolicValue valueSV = (SymbolicValue) value.getMetadata(EVAL_KEY);
 			if (valueSV == null) {
 				logError(
 					String.format("Local variable %s = %s has assignment with null symbolic value", name, localVariable.getAssignment().toString()),
 					localVariable);
 			} else {
-				// If we already evaluated the value, we can get its symbolic value and associate it with the local variable
+				// CheckVarAssign: Δ′[x ↦ 𝜈].
 				Object metadata = value.getMetadata(EVAL_KEY);
 				if (metadata != null) {
 					SymbolicValue vv = (SymbolicValue) metadata;
@@ -188,6 +202,7 @@ public class TypeChecker extends LatteAbstractChecker {
 				} else {
 					symbEnv.addVarSymbolicValue(localVariable.getSimpleName(), valueSV);
 				}
+				// CheckVarAssign: Δ′; Σ′ ⪰ Δ′′; Σ′′.
 				ClassLevelMaps.simplify(symbEnv, permEnv);
 			}
 		}
@@ -198,20 +213,19 @@ public class TypeChecker extends LatteAbstractChecker {
 	}
 
 	/**
-	 * CheckCall
-	 *  method(Γ(𝑥), 𝑓 ) = 𝛼 𝐶 𝑚(𝛼0 𝐶0 this, 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
-	 *	Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝐶0, · · · , 𝐶𝑛
-	 *	Γ; Δ; Σ ⊢ 𝑒0, · · · , 𝑒𝑛 ⇓ 𝜈0, · · · , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ 
-	 *	Σ′ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝛼0, · · · , 𝛼𝑛 ⊣ Σ′′
-	 *	distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
-	 *	Δ′ [𝑦 ↦ → 𝜈′]; Σ′′ [𝜈 ↦ → 𝛼] ⪰ Δ′′; Σ′′′
-	 * 	------------------------------------------------
-	 *	Γ; Δ; Σ ⊢ 𝑦 = 𝑥 .𝑚(𝑒); ⊣ Γ; Δ′′; Σ′′′
+	 * EvalArgs
+	 * Γ; Δ; Σ; 𝜑 ⊢ x, e₁, ..., eₙ ⇓ 𝜈₀, ..., 𝜈ₙ ⊣ Δ₁; Σ₁; 𝜑₁
+	 * Σ₁ ⊢ 𝜈₀, ..., 𝜈ₙ : α₀, ..., αₙ ⊣ Σ₂
+	 * distinct(Δ₁, {𝜈ᵢ : borrowed ≤ αᵢ})
+	 *
+	 * CheckCall-V2: this method currently implements ① lookup, ② EvalArgs for ē,
+	 * and part of ⑥ return allocation. TODO: prepare(y), CheckPre/SMT, havoc,
+	 * full update, and AssumePost.
 	 */
-	// TODO: Check
 	@Override
 	public <T> void visitCtInvocation(CtInvocation<T> invocation) {
 		logInfo("Visiting invocation <" + invocation.toStringDebug() + ">", invocation);
+		// EvalArgs: evaluate x, e₁, ..., eₙ before checking α₀, ..., αₙ.
 		super.visitCtInvocation(invocation);
 
 		String methodName = invocation.getExecutable().getSimpleName();
@@ -223,6 +237,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			logError("Invocation needs to have a target but found none -", invocation);
 		}
 
+		// CheckCall-V2 ①: method(Γ(x), f) lookup.
 		CtTypeReference<?> receiverType = invocation.getTarget().getType().getTypeErasure();
 		CtClass<?> klass = maps.getClassFrom(receiverType);
 		CtMethod<?> method = maps.getCtMethod(klass, methodName, invocation.getArguments().size());
@@ -234,6 +249,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		List<SymbolicValue> argValues = new ArrayList<>();
 		for (int i = 0; i < invocation.getArguments().size(); i++) {
 			CtExpression<?> arg = invocation.getArguments().get(i);
+			// EvalArgs: eᵢ ⇓ 𝜈ᵢ.
 			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
 			if (argSV == null) {
 				logError("Symbolic value for invocation argument not found", invocation);
@@ -242,6 +258,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
 			UniquenessAnnotation actualUA = permEnv.get(argSV);
 
+			// EvalArgs: Σ ⊢ 𝜈ᵢ : αᵢ ⊣ Σ′.
 			logInfo(String.format("Checking invocation argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA));
 			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
 				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
@@ -256,10 +273,12 @@ public class TypeChecker extends LatteAbstractChecker {
 				distinctArgs.add(argSV);
 			}
 		}
+		// EvalArgs: distinct(Δ, {𝜈ᵢ : borrowed ≤ αᵢ}).
 		if (!symbEnv.distinct(distinctArgs)) {
 			logError(String.format("Non-distinct parameters in method call of %s", klass.getSimpleName()), invocation);
 		}
 
+		// CheckCall-V2 ⑥, partial: fresh 𝜈_ret; Σ[𝜈_ret ↦ α_ret].
 		UniquenessAnnotation returnUA = new UniquenessAnnotation(method);
 		SymbolicValue returnSV = symbEnv.addVariable(invocation.toString());
 		permEnv.add(returnSV, returnUA);
@@ -273,12 +292,12 @@ public class TypeChecker extends LatteAbstractChecker {
 		----------------------------------------------
 		Γ; Δ; Σ ⊢ 𝑥 .𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ
 	 */
-	// TODO: Check
 	@Override
 	public <T> void visitCtFieldRead(CtFieldRead<T> fieldRead) {
 		logInfo("Visiting field read <" + fieldRead.toStringDebug() + ">", fieldRead);
 		loggingSpaces++;
 
+		// EvalField: evaluate the target x before resolving Δ(𝜈.f).
 		super.visitCtFieldRead(fieldRead);
 		CtExpression<?> target = fieldRead.getTarget();
 		CtFieldReference<?> field = fieldRead.getVariable();
@@ -286,6 +305,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		if (target instanceof CtVariableReadImpl || target instanceof CtThisAccessImpl) {
 			SymbolicValue value;
 			CtTypeReference<?> type = target.getType();
+			// EvalField: Δ(x)=𝜈, with this resolved through Δ(this).
 			value = (target instanceof CtVariableReadImpl)
 				? symbEnv.get(((CtVariableReadImpl<?>) target).getVariable().getSimpleName())
 				: symbEnv.get(THIS);
@@ -293,6 +313,8 @@ public class TypeChecker extends LatteAbstractChecker {
 			UniquenessAnnotation perm = permEnv.get(value);
 			SymbolicValue fieldValue = symbEnv.get(value, field.getSimpleName());
 			if (perm.isGreaterEqualThan(Uniqueness.UNIQUE) && fieldValue == null) {
+				// EvalField fresh/tracked case: if α > shared and Δ(𝜈.f) is absent,
+				// create Δ(𝜈.f)=𝜈′ and Σ(𝜈′)=field(Γ(x), f).
 				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(field.getSimpleName(), type);
 				if (fieldUA == null) {
 					logError(String.format("field annotation not found for %s", field.getSimpleName()), fieldRead);
@@ -302,6 +324,7 @@ public class TypeChecker extends LatteAbstractChecker {
 				fieldRead.putMetadata(EVAL_KEY, fieldValue);
 				logInfo(String.format("%s.%s: %s", value, field.getSimpleName(), fieldValue));
 			} else if (perm.isGreaterEqualThan(Uniqueness.SHARED) && fieldValue == null) {
+				// EvalField shared case: shared receivers may only expose shared fields.
 				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(field.getSimpleName(), type);
 				if (!fieldUA.isShared()) {
 					logError(String.format("Field %s is not shared but %s is", field.getSimpleName(), value), fieldRead);
@@ -312,6 +335,7 @@ public class TypeChecker extends LatteAbstractChecker {
 					logInfo(String.format("%s.%s: %s", value, field.getSimpleName(), fieldValue));
 				}
 			} else {
+				// EvalField existing case: require Σ(𝜈) ≠ ⊥ and Σ(𝜈′) ≠ ⊥.
 				if (perm.isBottom()) {
 					logError(String.format("%s:%s is not accepted in field evaluation", value, perm), fieldRead);
 				}
@@ -340,16 +364,17 @@ public class TypeChecker extends LatteAbstractChecker {
 	 * --------------------------------------------------------------------------------------
 	 * Γ; Δ; Σ ⊢ 𝑥 .𝑓 = 𝑒; ⊣ Γ; Δ′′′; Σ′′′′; 𝜑′′
 	 */
-    // TODO: Check, might be better to have visitCtAssigment handle.
 	@Override
 	public <T> void visitCtFieldWrite(CtFieldWrite<T> fieldWrite) {
 		logInfo("Visiting field write <" + fieldWrite.toStringDebug() + ">", fieldWrite);
 		CtExpression<?> target = fieldWrite.getTarget();
 		if (target instanceof CtVariableReadImpl) {
+			// CheckFieldAssign: Γ; Δ′; Σ′; 𝜑′ ⊢ x ⇓ 𝜈.
 			SymbolicValue value = symbEnv.get(((CtVariableReadImpl<?>) target).getVariable().getSimpleName());
 			target.putMetadata(EVAL_KEY, value);
 			logInfo(((CtVariableReadImpl<?>) target).getVariable().getSimpleName() + ": " + value);
 		} else if (target instanceof CtThisAccessImpl) {
+			// CheckFieldAssign: this is treated as x and resolves through Δ(this).
 			SymbolicValue value = symbEnv.get(THIS);
 			target.putMetadata(EVAL_KEY, value);
 			logInfo("this: " + value);
@@ -358,11 +383,15 @@ public class TypeChecker extends LatteAbstractChecker {
 		}
 	}
 
-    // TODO: Check
+	/**
+	 * CheckVarAssign and CheckFieldAssign are completed after Spoon has
+	 * visited the RHS and assigned EVAL_KEY metadata.
+	 */
 	@Override
 	public <T, A extends T> void visitCtAssignment(CtAssignment<T, A> assignment) {
 		logInfo("Visiting assignment <" + assignment.toStringDebug() + ">", assignment);
 		loggingSpaces++;
+		// CheckVarAssign / CheckFieldAssign: evaluate e ⇓ 𝜈′ before updating Δ.
 		super.visitCtAssignment(assignment);
 
 		CtExpression<?> assignee = assignment.getAssigned();
@@ -372,6 +401,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			if (value instanceof CtInvocation<?> invocation) {
 				handleInvocationAssignment(varWrite, invocation, assignment);
 			} else {
+				// CheckVarAssign: use RHS 𝜈 and write Δ[x ↦ 𝜈].
 				SymbolicValue valueSV = (SymbolicValue) value.getMetadata(EVAL_KEY);
 				if (valueSV == null) {
 					logError("Symbolic value for assignment not found", assignment);
@@ -384,55 +414,66 @@ public class TypeChecker extends LatteAbstractChecker {
 			CtExpression<?> target = fieldWrite.getTarget();
 			CtFieldReference<?> field = fieldWrite.getVariable();
 			CtTypeReference<?> targetType = target.getType();
+			// CheckFieldAssign: field(Γ(x), f)=α C.
 			UniquenessAnnotation fieldPerm = maps.getFieldAnnotation(field.getSimpleName(), targetType);
 
+			// CheckFieldAssign: e ⇓ 𝜈′ and x ⇓ 𝜈.
 			SymbolicValue valueSV = (SymbolicValue) value.getMetadata(EVAL_KEY);
 			SymbolicValue targetSV = (SymbolicValue) target.getMetadata(EVAL_KEY);
 			UniquenessAnnotation valuePerm = permEnv.get(valueSV);
 
+			// CheckFieldAssign: Σ′′ ⊢ 𝜈′ : α ⊣ Σ′′′.
 			if (!permEnv.usePermissionAs(valueSV, valuePerm, fieldPerm)) {
 				logError(String.format("Expected %s but got %s", fieldPerm, valuePerm), assignment);
 			}
 
+			// CheckFieldAssign: Δ′′[𝜈.f ↦ 𝜈′].
 			symbEnv.addFieldSymbolicValue(targetSV, field.getSimpleName(), valueSV);
 		}
 
+		// CheckVarAssign / CheckFieldAssign: Δ; Σ ⪰ Δ′; Σ′.
 		ClassLevelMaps.simplify(symbEnv, permEnv);
 		loggingSpaces--;
 	}
 
-    // TODO: Check
+	/**
+	 * CheckNew
+	 * constructor(C) = (ρ_pre >> ρ_post) C(α₁ C₁ f₁, ..., αₙ Cₙ fₙ)
+	 * Γ ⊢ y : C
+	 * Γ; Δ; Σ; 𝜑 ⊢ args(x₁, ..., xₙ : α₁, ..., αₙ) ⊣ 𝜈₁, ..., 𝜈ₙ; Δ₁; Σ₁; 𝜑₁
+	 * Δ₃, Σ₃ ⊢ havoc(𝜈₀, 𝜈₁, ..., 𝜈ₙ) ⊣ Δ₄; Σ₄; O
+	 * fresh 𝜈_new
+	 * Δ₂ = Δ₁[y ↦ 𝜈_new]
+	 * Σ₂ = Σ₁[𝜈_new ↦ unique]
+	 * Γ; Δ₃; Σ₂; 𝜑₂; O ⊢ post(ρ_post, y, x̄, f̄, 𝜈_new) ⊣ Δ₄; Σ₃; 𝜑₃
+	 * --------------------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ y = new C(x̄); ⊣ Γ; Δ₄; Σ₃; 𝜑₃
+	 *
+	 * Phase 3.1 implements args and fresh 𝜈_new allocation. Havoc/post are TODO.
+	 */
 	@Override
 	public <T> void visitCtConstructorCall(CtConstructorCall<T> constCall) {
 		logInfo("Visiting constructor call <"+ constCall.toStringDebug()+">", constCall);
+		// CheckNew ②: evaluate constructor arguments x̄ ⇓ 𝜈̄.
 		super.visitCtConstructorCall(constCall);
 
-		// Check if all arguments follow the restrictions
+		// CheckNew ②: Σ ⊢ 𝜈ᵢ : αᵢ and distinct borrowed-or-stronger args.
 		if (constCall.getArguments().size() > 0)
 			handleConstructorArgs(constCall);
-		// Create a new symbolic value for the constructor
+		// CheckNew ④: fresh 𝜈_new; Σ[𝜈_new ↦ free].
 		SymbolicValue vv = symbEnv.getFresh();
 		permEnv.add(vv, new UniquenessAnnotation(Uniqueness.FREE));
 		constCall.putMetadata(EVAL_KEY, vv);
 	}
 
 	/**
-	 * Handle the constructor with arguments
-	 * 
-	 * CheckNew
-	 * ctor(𝐶) = 𝐶 (𝛼1 𝐶1 𝑥1, ..., 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
-	 * Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒1, ..., 𝑒𝑛 : 𝐶1, ... , 𝐶𝑛
-	 * Γ; Δ; Σ ⊢ 𝑒1, ... , 𝑒𝑛 ⇓ 𝜈1, ... , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ 
-	 * Σ′ ⊢ 𝑒1, ... , 𝑒𝑛 : 𝛼1, ... , 𝛼𝑛 ⊣ Σ′′
-	 * distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
-	 * Δ′ [𝑦 → 𝜈′]; Σ′′ [𝜈 ↦ → free] ⪰ Δ′′; Σ′′′
-	 * ------------------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑦 = new 𝐶 (𝑒1, ..., 𝑒𝑛 ); ⊣ Γ; Δ′′; Σ′′′
-
-	 * @param constCall
+	 * EvalArgs for CheckNew:
+	 * Γ; Δ; Σ; 𝜑 ⊢ x₁, ..., xₙ ⇓ 𝜈₁, ..., 𝜈ₙ ⊣ Δ₁; Σ₁; 𝜑₁
+	 * Σ₁ ⊢ 𝜈₁, ..., 𝜈ₙ : α₁, ..., αₙ ⊣ Σ₂
+	 * distinct(Δ₁, {𝜈ᵢ : borrowed ≤ αᵢ})
 	 */
-	// TODO: Check
 	private void handleConstructorArgs(CtConstructorCall<?> constructorCall) {
+		// CheckNew ①: constructor(C) lookup.
 		CtClass<?> klass = maps.getClassFrom(constructorCall.getType());
 		int paramSize = constructorCall.getArguments().size();
 		CtConstructor<?> constructor = maps.geCtConstructor(klass, paramSize);
@@ -443,6 +484,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		}
 		for (int i = 0; i < paramSize; i++) {
 			CtExpression<?> arg = constructorCall.getArguments().get(i);
+			// EvalArgs: xᵢ ⇓ 𝜈ᵢ.
 			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
 			if (argSV == null) {
 				logError("Symbolic value for constructor argument not found", constructorCall);
@@ -451,9 +493,11 @@ public class TypeChecker extends LatteAbstractChecker {
 			CtParameter<?> parameter = constructor.getParameters().get(i);
 			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
 			UniquenessAnnotation actualUA = permEnv.get(argSV);
+			// EvalArgs: borrowed ≤ αᵢ is required for the distinct set.
 			if (!actualUA.isGreaterEqualThan(Uniqueness.BORROWED)) {
 				logError(String.format("Symbolic value %s:%s is not greater than BORROWED", argSV, actualUA), arg);
 			}
+			// EvalArgs: Σ ⊢ 𝜈ᵢ : αᵢ ⊣ Σ′.
 			logInfo(String.format("Checking constructor argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA), constructorCall);
 			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
 				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
@@ -461,6 +505,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			paramSymbValues.add(argSV);
 		}
 
+		// EvalArgs: distinct(Δ, {𝜈ᵢ : borrowed ≤ αᵢ}).
 		if (!symbEnv.distinct(paramSymbValues)) {
 			logError(String.format("Non-distinct parameters in constructor call of %s", klass.getSimpleName()), constructorCall);
 		}
@@ -472,7 +517,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		logInfo("Visiting if <"+ ifElement.toStringDebug()+">", ifElement);
 		// super.visitCtIf(ifElement);
 
-		// Evaluate the conditions
+		// CheckIf: Γ; Δ; Σ; 𝜑 ⊢ e ⇓ 𝜈_c ⊣ Δ₀; Σ₀; 𝜑₀.
 		CtExpression<Boolean> condition = ifElement.getCondition();
 		if (condition instanceof CtBinaryOperator) {
 			visitCtBinaryOperator((CtBinaryOperator<?>) condition);
@@ -490,6 +535,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			logError("Cannot evaluate the condition of the if statement: " + condition.toString(), condition);
 		}
 
+		// CheckIf: Γ; Δ₀; Σ₀; 𝜑₀ ∧ 𝜈_c ⊢ s₁.
 		enterScopes();
 		super.visitCtBlock(ifElement.getThenStatement());
 		SymbolicEnvironment thenSymbEnv = symbEnv.cloneLast();
@@ -500,18 +546,19 @@ public class TypeChecker extends LatteAbstractChecker {
 		PermissionEnvironment elsePermEnv;
 
 		if (ifElement.getElseStatement() != null) {
-			//Else statement
+			// CheckIf: Γ; Δ₀; Σ₀; 𝜑₀ ∧ ¬𝜈_c ⊢ s₂.
 			enterScopes();
 			super.visitCtBlock(ifElement.getElseStatement());
 			elseSymbEnv = symbEnv.cloneLast();
 			elsePermEnv = permEnv.cloneLast();
 			exitScopes();
 		} else {
-			//No Else statement
+			// CheckIf without else: the else branch is the unchanged incoming state.
 			elseSymbEnv = symbEnv.cloneLast();
 			elsePermEnv = permEnv.cloneLast();
 		}
 
+		// CheckIf: Δ₁; Σ₁; 𝜑₁ ∧^{𝜑₀}_{𝜈_c} Δ₂; Σ₂; 𝜑₂ ⇒ Δ′; Σ′; 𝜑′.
 		joining(thenSymbEnv, thenPermEnv, elseSymbEnv, elsePermEnv);
 	}
 
@@ -522,6 +569,7 @@ public class TypeChecker extends LatteAbstractChecker {
 
 		CtExpression<?> returned = returnStatement.getReturnedExpression();
 		if (returned == null) return;
+		// T-Method: xᵣ ⇓ 𝜈ᵣ.
 		SymbolicValue vRet = (SymbolicValue) returned.getMetadata(EVAL_KEY);
 		if (vRet == null) logError("Symbolic value for return not found:"+returned.toStringDebug(), returned);
 		UniquenessAnnotation ua = permEnv.get(vRet);
@@ -529,6 +577,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		CtMethod<?> cmet = returnStatement.getParent(CtMethod.class);
 		UniquenessAnnotation expectedUA = new UniquenessAnnotation(cmet);
 	
+		// T-Method: Σ ⊢ 𝜈ᵣ : α ⊣ Σ′.
 		if(!permEnv.usePermissionAs(vRet, ua, expectedUA)){
 			logError(String.format("Expected %s but got %s in return %s", 
 				expectedUA, ua, returnStatement.toString()), returned);
@@ -537,7 +586,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		ContractContext ctx = currentContract();
 		if (ctx != null && ctx.post != null) {
 			evaluatePreIfNeeded(ctx, returnStatement);
-			// TODO: implement havoc and uncomment this	
+			// T-Method TODO: ρ_post ⇓ ρ_post′ and ⊢SMT ρ_post′[𝜈ᵣ/result].
 			/* 
 			Evaluator.PredicateEvalResult postResult = eval.evalPredicate(
 				ctx.post, ctx.typeEnv, symbEnv, permEnv, this.refinementPath);
@@ -657,11 +706,16 @@ public class TypeChecker extends LatteAbstractChecker {
 	}
 
 	/**
-	 * Performs the joining operation after the if statement
-	 * @param thenSymbEnv
-	 * @param thenPermEnv
-	 * @param elseSymbEnv
-	 * @param elsePermEnv
+	 * Join
+	 * Kᵥ = dom_var(Δ₁) ∩ dom_var(Δ₂)
+	 * K = Kᵥ ∪ { k.f | k ∈ K, Δ₁(k.f) and Δ₂(k.f) defined }
+	 * fresh 𝜈ₖ for each k ∈ K
+	 * Δ′ = { k ↦ 𝜈ₖ | k ∈ Kᵥ } ∪ { 𝜈ₖ.f ↦ 𝜈ₖ.f | k.f ∈ K }
+	 * Σ′ = (Σ₁ ⊓ Σ₂) ∪ { 𝜈ₖ : Σ₁(Δ₁(k)) ⊓ Σ₂(Δ₂(k)) | k ∈ K }
+	 * --------------------------------------------------------------------------------
+	 * Δ₁; Σ₁; 𝜑₁ ∧^{𝜑₀}_{𝜈_c} Δ₂; Σ₂; 𝜑₂ ⇒ Δ′; Σ′; 𝜑′
+	 *
+	 * Current implementation joins Δ and Σ; 𝜑 join equalities are TODO.
 	 */
 	public void joining(
 		SymbolicEnvironment thenSymbEnv,
@@ -673,13 +727,16 @@ public class TypeChecker extends LatteAbstractChecker {
 			return;
 		}
 
+		// Join ①/②: keep only variables and fields present in both branches.
 		ClassLevelMaps.joinDropVar(symbEnv, thenSymbEnv);
 		ClassLevelMaps.joinDropVar(symbEnv, elseSymbEnv);
 		ClassLevelMaps.joinDropField(symbEnv);
 
+		// Join ③/④/⑥: mint joined 𝜈ₖ values and meet branch permissions.
 		ClassLevelMaps.joinUnify(symbEnv, permEnv, thenSymbEnv, thenPermEnv, elseSymbEnv, elsePermEnv);
 		ClassLevelMaps.joinElim(symbEnv, permEnv, thenSymbEnv, thenPermEnv, elseSymbEnv, elsePermEnv);
 
+		// Join/Simplify: collapse redundant joined values when possible.
 		ClassLevelMaps.simplify(symbEnv, permEnv);
 		logInfo("Joining finished! " + symbEnv + "\n " + permEnv);
 	}
@@ -688,11 +745,13 @@ public class TypeChecker extends LatteAbstractChecker {
 		CtVariableWriteImpl<?> assignee,
 		CtInvocation<?> invocation,
 		CtAssignment<?, ?> assignment) {
+		// CheckCall-V2 assignment form: y = x.m(ē).
 		String methodName = invocation.getExecutable().getSimpleName();
 		if (methodName.equals("<init>")) {
 			return;
 		}
 
+		// CheckCall-V2 ①: method(Γ(x), f) lookup.
 		CtTypeReference<?> receiverType = invocation.getTarget().getType().getTypeErasure();
 		CtClass<?> klass = maps.getClassFrom(receiverType);
 		CtMethod<?> method = maps.getCtMethod(klass, methodName, invocation.getArguments().size());
@@ -700,11 +759,13 @@ public class TypeChecker extends LatteAbstractChecker {
 			return;
 		}
 
+		// CheckCall-V2 ⑥: retrieve 𝜈_ret allocated by visitCtInvocation.
 		SymbolicValue returnSV = (SymbolicValue) invocation.getMetadata(EVAL_KEY);
 		if (returnSV == null) {
 			logError("Symbolic value for invocation return not found", assignment);
 		}
 
+		// PrepareTarget ③ / UpdatePerms ⑥: fresh target 𝜈′ carrying α_ret.
 		SymbolicValue freshTarget = symbEnv.addVariable(assignee.getVariable().getSimpleName());
 		UniquenessAnnotation returnPerm = permEnv.get(returnSV);
 		if (returnPerm == null) {
@@ -715,6 +776,8 @@ public class TypeChecker extends LatteAbstractChecker {
 		RefinementContract contract = maps.getMethodContract(klass, methodName, invocation.getArguments().size());
 		if (contract != null && contract.getFrom() != null) {
 			try {
+				// CheckPre ④, partial: evaluate ρ_pre after substituting call-site names
+				// is TODO; phase 3.1 only validates the predicate under current Γ; Δ; Σ.
 				Evaluator.PredicateEvalResult preResult = eval.evalPredicate(
 					contract.getFrom(), buildInvocationTypeEnv(invocation), symbEnv, permEnv, this.refinementPath);
 				this.refinementPath = preResult.getRefinementPath();
@@ -723,6 +786,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			}
 		}
 
+		// UpdatePerms ⑥: unique actuals become ⊥ after ownership transfer.
 		for (CtExpression<?> arg : invocation.getArguments()) {
 			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
 			if (argSV == null) {
@@ -734,6 +798,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			}
 		}
 
+		// UpdatePerms ⑥: Δ[y ↦ 𝜈_ret] followed by simplification.
 		symbEnv.addVarSymbolicValue(assignee.getVariable().getSimpleName(), freshTarget);
 		ClassLevelMaps.simplify(symbEnv, permEnv);
 	}
@@ -786,6 +851,7 @@ public class TypeChecker extends LatteAbstractChecker {
 			return;
 		}
 		try {
+			// T-Method/T-wf: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′ before checking s̄.
 			Evaluator.PredicateEvalResult preResult = eval.evalPredicate(
 				ctx.pre, ctx.typeEnv, symbEnv, permEnv, this.refinementPath);
 			this.refinementPath = preResult.getRefinementPath();
