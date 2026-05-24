@@ -1,12 +1,11 @@
 package typechecking;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.io.File;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -66,7 +65,7 @@ public class EvaluatorTest {
 			env.permEnv,
 			new RefinementPath());
 
-		assertSame(literal, result.getPredicate());
+		assertSame(literal, result.predicate());
 	}
 
 	@Test
@@ -82,7 +81,7 @@ public class EvaluatorTest {
 			env.permEnv,
 			new RefinementPath());
 
-		assertEquals(x.toString(), ExpressionPrettyPrinter.print(result.getPredicate()));
+		assertEquals(x.toString(), ExpressionPrettyPrinter.print(result.predicate()));
 	}
 
 	@Test
@@ -99,7 +98,7 @@ public class EvaluatorTest {
 			env.permEnv,
 			new RefinementPath());
 
-		assertEquals(x + " == true", ExpressionPrettyPrinter.print(result.getPredicate()));
+		assertEquals(x + " == true", ExpressionPrettyPrinter.print(result.predicate()));
 	}
 
 	@Test
@@ -117,7 +116,7 @@ public class EvaluatorTest {
 			env.permEnv,
 			new RefinementPath());
 
-		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result.getPredicate()));
+		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result.predicate()));
 	}
 
 	@Test
@@ -134,7 +133,7 @@ public class EvaluatorTest {
 			new RefinementPath());
 
 		SymbolicValue field = env.symbEnv.get(x, "isConnected");
-		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result.getPredicate()));
+		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result.predicate()));
 		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), env.permEnv.get(field));
 	}
 

@@ -71,21 +71,21 @@ public class Evaluator {
 			PredicateEvalResult operand = evalExpression(
 				unaryExpression.getExpression(), typeEnv, symbEnv, permEnv, refinementPath);
 			return new PredicateEvalResult(
-				new UnaryExpression(unaryExpression.getOperator(), operand.getPredicate()),
-				operand.getSymbEnv(),
-				operand.getPermEnv(),
-				operand.getRefinementPath());
+				new UnaryExpression(unaryExpression.getOperator(), operand.predicate()),
+				operand.symbEnv(),
+				operand.permEnv(),
+				operand.refinementPath());
 		}
 		if (expression instanceof BinaryExpression binaryExpression) {
 			PredicateEvalResult left = evalExpression(
 				binaryExpression.getLeft(), typeEnv, symbEnv, permEnv, refinementPath);
 			PredicateEvalResult right = evalExpression(
-				binaryExpression.getRight(), typeEnv, left.getSymbEnv(), left.getPermEnv(), left.getRefinementPath());
+				binaryExpression.getRight(), typeEnv, left.symbEnv(), left.permEnv(), left.refinementPath());
 			return new PredicateEvalResult(
-				new BinaryExpression(left.getPredicate(), binaryExpression.getOperator(), right.getPredicate()),
-				right.getSymbEnv(),
-				right.getPermEnv(),
-				right.getRefinementPath());
+				new BinaryExpression(left.predicate(), binaryExpression.getOperator(), right.predicate()),
+				right.symbEnv(),
+				right.permEnv(),
+				right.refinementPath());
 		}
 		if (expression instanceof FunctionInvocation invocation) {
 			return evalFunctionInvocation(invocation, typeEnv, symbEnv, permEnv, refinementPath);
@@ -173,10 +173,10 @@ public class Evaluator {
 
 		for (Expression arg : invocation.getArguments()) {
 			PredicateEvalResult argResult = evalExpression(arg, typeEnv, currentSymb, currentPerm, currentPath);
-			newArgs.add(argResult.getPredicate());
-			currentSymb = argResult.getSymbEnv();
-			currentPerm = argResult.getPermEnv();
-			currentPath = argResult.getRefinementPath();
+			newArgs.add(argResult.predicate());
+			currentSymb = argResult.symbEnv();
+			currentPerm = argResult.permEnv();
+			currentPath = argResult.refinementPath();
 		}
 
 		return new PredicateEvalResult(
@@ -215,37 +215,9 @@ public class Evaluator {
 		}
 	}
 
-	public static final class PredicateEvalResult {
-		private final Expression predicate;
-		private final SymbolicEnvironment symbEnv;
-		private final PermissionEnvironment permEnv;
-		private final RefinementPath refinementPath;
-
-		public PredicateEvalResult(
-			Expression predicate,
-			SymbolicEnvironment symbEnv,
-			PermissionEnvironment permEnv,
-			RefinementPath refinementPath) {
-			this.predicate = predicate;
-			this.symbEnv = symbEnv;
-			this.permEnv = permEnv;
-			this.refinementPath = refinementPath;
-		}
-
-		public Expression getPredicate() {
-			return predicate;
-		}
-
-		public SymbolicEnvironment getSymbEnv() {
-			return symbEnv;
-		}
-
-		public PermissionEnvironment getPermEnv() {
-			return permEnv;
-		}
-
-		public RefinementPath getRefinementPath() {
-			return refinementPath;
-		}
-	}
+	public static record PredicateEvalResult(
+		Expression predicate,
+		SymbolicEnvironment symbEnv,
+		PermissionEnvironment permEnv,
+		RefinementPath refinementPath){}
 }

@@ -775,15 +775,9 @@ public class TypeChecker extends LatteAbstractChecker {
 
 		RefinementContract contract = maps.getMethodContract(klass, methodName, invocation.getArguments().size());
 		if (contract != null && contract.getFrom() != null) {
-			try {
-				// CheckPre ④, partial: evaluate ρ_pre after substituting call-site names
-				// is TODO; phase 3.1 only validates the predicate under current Γ; Δ; Σ.
-				Evaluator.PredicateEvalResult preResult = eval.evalPredicate(
-					contract.getFrom(), buildInvocationTypeEnv(invocation), symbEnv, permEnv, this.refinementPath);
-				this.refinementPath = preResult.getRefinementPath();
-			} catch (IllegalStateException ex) {
-				logError("Refinement precondition failed: " + ex.getMessage(), assignment);
-			}
+			// CheckPre ④, partial: substituting call-site names is TODO;
+			// phase 3.1 validates and assumes ρ_pre under current Γ; Δ; Σ.
+			evaluateAndAssumePre(contract.getFrom(), buildInvocationTypeEnv(invocation), assignment, "");
 		}
 
 		// UpdatePerms ⑥: unique actuals become ⊥ after ownership transfer.
@@ -850,14 +844,26 @@ public class TypeChecker extends LatteAbstractChecker {
 		if (ctx.pre == null) {
 			return;
 		}
+		evaluateAndAssumePre(ctx.pre, ctx.typeEnv, location, " for " + ctx.label);
+	}
+
+	private void evaluateAndAssumePre(
+		Expression pre,
+		Map<String, CtTypeReference<?>> typeEnv,
+		CtElement location,
+		String label) {
 		try {
-			// T-Method/T-wf: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′ before checking s̄.
+			// T-Method/CheckPre: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′.
 			Evaluator.PredicateEvalResult preResult = eval.evalPredicate(
-				ctx.pre, ctx.typeEnv, symbEnv, permEnv, this.refinementPath);
-			this.refinementPath = preResult.getRefinementPath();
-			ctx.refinementPath = preResult.getRefinementPath();
+				pre, typeEnv, symbEnv, permEnv, this.refinementPath);
+			// T-Method/CheckPre: continue under 𝜑 ∧ ρ_pre′.
+			RefinementPath path = preResult.refinementPath();
+			if (preResult.predicate() != null) {
+				path = path.addExpression(preResult.predicate());
+			}
+			this.refinementPath = path;
 		} catch (IllegalStateException ex) {
-			logError("Refinement precondition failed for " + ctx.label + ": " + ex.getMessage(), location);
+			logError("Refinement precondition failed" + label + ": " + ex.getMessage(), location);
 		}
 	}
 
@@ -886,7 +892,6 @@ public class TypeChecker extends LatteAbstractChecker {
 		private final Map<String, CtTypeReference<?>> typeEnv = new HashMap<>();
 		private int seenParams = 0;
 		private boolean preEvaluated = false;
-		private RefinementPath refinementPath;
 
 		private ContractContext(Expression pre, Expression post, int expectedParams, String label) {
 			this.pre = pre;
