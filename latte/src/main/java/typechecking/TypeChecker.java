@@ -76,6 +76,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		}
 		enterScopes();
 
+		// Assume 'this' is a parameter always borrowed
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 		if (ctx != null && ctx.expectedParams == 0) {
@@ -100,6 +101,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		}
 		enterScopes();
 
+		// Assume 'this' is a parameter always borrowed
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 		if (ctx != null && ctx.expectedParams == 0) {
@@ -177,6 +179,7 @@ public class TypeChecker extends LatteAbstractChecker {
 					String.format("Local variable %s = %s has assignment with null symbolic value", name, localVariable.getAssignment().toString()),
 					localVariable);
 			} else {
+				// If we already evaluated the value, we can get its symbolic value and associate it with the local variable
 				Object metadata = value.getMetadata(EVAL_KEY);
 				if (metadata != null) {
 					SymbolicValue vv = (SymbolicValue) metadata;
@@ -194,6 +197,18 @@ public class TypeChecker extends LatteAbstractChecker {
 		loggingSpaces--;
 	}
 
+	/**
+	 * CheckCall
+	 *  method(Γ(𝑥), 𝑓 ) = 𝛼 𝐶 𝑚(𝛼0 𝐶0 this, 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
+	 *	Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝐶0, · · · , 𝐶𝑛
+	 *	Γ; Δ; Σ ⊢ 𝑒0, · · · , 𝑒𝑛 ⇓ 𝜈0, · · · , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ 
+	 *	Σ′ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝛼0, · · · , 𝛼𝑛 ⊣ Σ′′
+	 *	distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
+	 *	Δ′ [𝑦 ↦ → 𝜈′]; Σ′′ [𝜈 ↦ → 𝛼] ⪰ Δ′′; Σ′′′
+	 * 	------------------------------------------------
+	 *	Γ; Δ; Σ ⊢ 𝑦 = 𝑥 .𝑚(𝑒); ⊣ Γ; Δ′′; Σ′′′
+	 */
+	// TODO: Check
 	@Override
 	public <T> void visitCtInvocation(CtInvocation<T> invocation) {
 		logInfo("Visiting invocation <" + invocation.toStringDebug() + ">", invocation);
@@ -252,6 +267,13 @@ public class TypeChecker extends LatteAbstractChecker {
 		logInfo(String.format("Invocation %s:%s, %s:%s", invocation.toString(), returnSV, returnSV, returnUA));
 	}
 
+	/**
+	 * EvalField
+		Δ(𝑥) = 𝜈   Δ(𝜈.𝑓 ) = 𝜈′   Σ(𝜈) ≠ ⊥   Σ(𝜈′) ≠ ⊥
+		----------------------------------------------
+		Γ; Δ; Σ ⊢ 𝑥 .𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ
+	 */
+	// TODO: Check
 	@Override
 	public <T> void visitCtFieldRead(CtFieldRead<T> fieldRead) {
 		logInfo("Visiting field read <" + fieldRead.toStringDebug() + ">", fieldRead);
@@ -318,8 +340,7 @@ public class TypeChecker extends LatteAbstractChecker {
 	 * --------------------------------------------------------------------------------------
 	 * Γ; Δ; Σ ⊢ 𝑥 .𝑓 = 𝑒; ⊣ Γ; Δ′′′; Σ′′′′; 𝜑′′
 	 */
-    // TODO: Check, might be better to have visitCtAssigment
-    // handle.
+    // TODO: Check, might be better to have visitCtAssigment handle.
 	@Override
 	public <T> void visitCtFieldWrite(CtFieldWrite<T> fieldWrite) {
 		logInfo("Visiting field write <" + fieldWrite.toStringDebug() + ">", fieldWrite);
@@ -393,6 +414,57 @@ public class TypeChecker extends LatteAbstractChecker {
 		SymbolicValue vv = symbEnv.getFresh();
 		permEnv.add(vv, new UniquenessAnnotation(Uniqueness.FREE));
 		constCall.putMetadata(EVAL_KEY, vv);
+	}
+
+	/**
+	 * Handle the constructor with arguments
+	 * 
+	 * CheckNew
+	 * ctor(𝐶) = 𝐶 (𝛼1 𝐶1 𝑥1, ..., 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
+	 * Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒1, ..., 𝑒𝑛 : 𝐶1, ... , 𝐶𝑛
+	 * Γ; Δ; Σ ⊢ 𝑒1, ... , 𝑒𝑛 ⇓ 𝜈1, ... , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ 
+	 * Σ′ ⊢ 𝑒1, ... , 𝑒𝑛 : 𝛼1, ... , 𝛼𝑛 ⊣ Σ′′
+	 * distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
+	 * Δ′ [𝑦 → 𝜈′]; Σ′′ [𝜈 ↦ → free] ⪰ Δ′′; Σ′′′
+	 * ------------------------------------------------------
+	 * Γ; Δ; Σ ⊢ 𝑦 = new 𝐶 (𝑒1, ..., 𝑒𝑛 ); ⊣ Γ; Δ′′; Σ′′′
+
+	 * @param constCall
+	 */
+	// TODO: Check
+	private void handleConstructorArgs(CtConstructorCall<?> constructorCall) {
+		CtClass<?> klass = maps.getClassFrom(constructorCall.getType());
+		int paramSize = constructorCall.getArguments().size();
+		CtConstructor<?> constructor = maps.geCtConstructor(klass, paramSize);
+		List<SymbolicValue> paramSymbValues = new ArrayList<>();
+		if (klass == null || constructor == null) {
+			logInfo(String.format("Cannot find the constructor for {} in the context", constructorCall.getType()), constructorCall);
+			return;
+		}
+		for (int i = 0; i < paramSize; i++) {
+			CtExpression<?> arg = constructorCall.getArguments().get(i);
+			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
+			if (argSV == null) {
+				logError("Symbolic value for constructor argument not found", constructorCall);
+			}
+
+			CtParameter<?> parameter = constructor.getParameters().get(i);
+			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
+			UniquenessAnnotation actualUA = permEnv.get(argSV);
+			if (!actualUA.isGreaterEqualThan(Uniqueness.BORROWED)) {
+				logError(String.format("Symbolic value %s:%s is not greater than BORROWED", argSV, actualUA), arg);
+			}
+			logInfo(String.format("Checking constructor argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA), constructorCall);
+			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
+				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
+			}
+			paramSymbValues.add(argSV);
+		}
+
+		if (!symbEnv.distinct(paramSymbValues)) {
+			logError(String.format("Non-distinct parameters in constructor call of %s", klass.getSimpleName()), constructorCall);
+		}
+		logInfo("all distinct");
 	}
 
 	@Override
@@ -522,6 +594,9 @@ public class TypeChecker extends LatteAbstractChecker {
 		loggingSpaces--;
 	}
 
+	/**
+	 * Rule EvalVar
+	 */
 	@Override
 	public <T> void visitCtLocalVariableReference(CtLocalVariableReference<T> reference) {
 		logInfo("Visiting local variable reference <" + reference.toString() + ">", reference);
@@ -581,6 +656,13 @@ public class TypeChecker extends LatteAbstractChecker {
 		logInfo("Literal "+ literal.toString() + ": "+ sv);
 	}
 
+	/**
+	 * Performs the joining operation after the if statement
+	 * @param thenSymbEnv
+	 * @param thenPermEnv
+	 * @param elseSymbEnv
+	 * @param elsePermEnv
+	 */
 	public void joining(
 		SymbolicEnvironment thenSymbEnv,
 		PermissionEnvironment thenPermEnv,
@@ -654,41 +736,6 @@ public class TypeChecker extends LatteAbstractChecker {
 
 		symbEnv.addVarSymbolicValue(assignee.getVariable().getSimpleName(), freshTarget);
 		ClassLevelMaps.simplify(symbEnv, permEnv);
-	}
-    
-	private void handleConstructorArgs(CtConstructorCall<?> constructorCall) {
-		CtClass<?> klass = maps.getClassFrom(constructorCall.getType());
-		int paramSize = constructorCall.getArguments().size();
-		CtConstructor<?> constructor = maps.geCtConstructor(klass, paramSize);
-		List<SymbolicValue> paramSymbValues = new ArrayList<>();
-		if (klass == null || constructor == null) {
-			logInfo(String.format("Cannot find the constructor for {} in the context", constructorCall.getType()), constructorCall);
-			return;
-		}
-		for (int i = 0; i < paramSize; i++) {
-			CtExpression<?> arg = constructorCall.getArguments().get(i);
-			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
-			if (argSV == null) {
-				logError("Symbolic value for constructor argument not found", constructorCall);
-			}
-
-			CtParameter<?> parameter = constructor.getParameters().get(i);
-			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
-			UniquenessAnnotation actualUA = permEnv.get(argSV);
-			if (!actualUA.isGreaterEqualThan(Uniqueness.BORROWED)) {
-				logError(String.format("Symbolic value %s:%s is not greater than BORROWED", argSV, actualUA), arg);
-			}
-			logInfo(String.format("Checking constructor argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA), constructorCall);
-			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
-				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
-			}
-			paramSymbValues.add(argSV);
-		}
-
-		if (!symbEnv.distinct(paramSymbValues)) {
-			logError(String.format("Non-distinct parameters in constructor call of %s", klass.getSimpleName()), constructorCall);
-		}
-		logInfo("all distinct");
 	}
 
 	private ContractContext beginMethodContract(CtMethod<?> method) {
