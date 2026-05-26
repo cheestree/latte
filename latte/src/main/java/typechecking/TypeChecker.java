@@ -146,7 +146,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		logInfo(sv + ": "+ ua);
 
 		// T-Method/T-Method-void: evaluate ρ_pre once all formals are in Γ; Δ; Σ.
-		ContractContext ctx = currentContract();
+		ContractContext ctx = contractStack.peek();
 		if (ctx != null) {
 			ctx.typeEnv.put(parameter.getSimpleName(), type);
 			ctx.seenParams++;
@@ -583,7 +583,7 @@ public class TypeChecker extends LatteAbstractChecker {
 				expectedUA, ua, returnStatement.toString()), returned);
 		}
 
-		ContractContext ctx = currentContract();
+		ContractContext ctx = contractStack.peek();
 		if (ctx != null && ctx.post != null) {
 			evaluatePreIfNeeded(ctx, returnStatement);
 			// T-Method TODO: ρ_post ⇓ ρ_post′ and ⊢SMT ρ_post′[𝜈ᵣ/result].
@@ -865,10 +865,6 @@ public class TypeChecker extends LatteAbstractChecker {
 			ctx.typeEnv.put(THIS, declaringType);
 		}
 		return ctx;
-	}
-
-	private ContractContext currentContract() {
-		return contractStack.peek();
 	}
 
 	private void evaluatePreIfNeeded(ContractContext ctx, CtElement location) {
