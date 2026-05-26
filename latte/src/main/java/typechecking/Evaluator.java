@@ -37,10 +37,11 @@ public class Evaluator {
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
+		RefinementPath path = refinementPath != null ? refinementPath : new RefinementPath();
 		if (predicate == null) {
-			return new PredicateEvalResult(null, symbEnv, permEnv, refinementPath);
+			return new PredicateEvalResult(null, symbEnv, permEnv, path);
 		}
-		return evalExpression(predicate, typeEnv, symbEnv, permEnv, refinementPath);
+		return evalExpression(predicate, typeEnv, symbEnv, permEnv, path);
 	}
 
 	private PredicateEvalResult evalExpression(
@@ -81,6 +82,9 @@ public class Evaluator {
 				binaryExpression.getLeft(), typeEnv, symbEnv, permEnv, refinementPath);
 			PredicateEvalResult right = evalExpression(
 				binaryExpression.getRight(), typeEnv, left.symbEnv(), left.permEnv(), left.refinementPath());
+			// Milestone 3.1: predicate binary operators pass through after their
+			// operands are evaluated to symbolic form. Milestone 3.4 will add
+			// fresh result equalities for program-expression EvalBinary.
 			return new PredicateEvalResult(
 				new BinaryExpression(left.predicate(), binaryExpression.getOperator(), right.predicate()),
 				right.symbEnv(),
@@ -210,7 +214,7 @@ public class Evaluator {
 		if (perm.isBottom()) {
 			throw new IllegalStateException("Predicate uses inaccessible " + kind + " " + name + " with " + perm);
 		}
-		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+		if (perm.isShared() && perm.isBottom()) {
 			throw new IllegalStateException("Predicate uses shared " + kind + " " + name + " with " + perm);
 		}
 	}

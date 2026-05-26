@@ -608,12 +608,26 @@ public class TypeChecker extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtBinaryOperator(operator);
 
+		CtExpression<?> left = operator.getLeftHandOperand();
+		CtExpression<?> right = operator.getRightHandOperand();
+		SymbolicValue leftSV = (SymbolicValue) left.getMetadata(EVAL_KEY);
+		SymbolicValue rightSV = (SymbolicValue) right.getMetadata(EVAL_KEY);
+		if (leftSV == null) {
+			logInfo("Symbolic value for binary operator left operand not found", left);
+		}
+		if (rightSV == null) {
+			logInfo("Symbolic value for binary operator right operand not found", right);
+		}
+
 		// Get a fresh symbolic value and add it to the environment with an immutable permission (EvalBinary)
 		SymbolicValue sv = symbEnv.getFresh();
 		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
 
 		// Add the symbolic value to the environment with a shared default value
 		permEnv.add(sv, ua);
+
+		// Milestone 3.4: add the formal definition to the refinement path.
+		// refinementPath = refinementPath.addExpression(sv == leftSV <operator> rightSV);
 
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
@@ -630,12 +644,21 @@ public class TypeChecker extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtUnaryOperator(operator);
 
+		CtExpression<?> operand = operator.getOperand();
+		SymbolicValue operandSV = (SymbolicValue) operand.getMetadata(EVAL_KEY);
+		if (operandSV == null) {
+			logInfo("Symbolic value for unary operator operand not found", operand);
+		}
+
 		// Get a fresh symbolic value and add it to the environment with an immutable permission (EvalUnary)
 		SymbolicValue sv = symbEnv.getFresh();
 		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
 
 		// Add the symbolic value to the environment with a shared default value
 		permEnv.add(sv, ua);
+
+		// Milestone 3.4: add the formal definition to the refinement path.
+		// refinementPath = refinementPath.addExpression(sv == <operator> operandSV);
 		
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
@@ -674,8 +697,17 @@ public class TypeChecker extends LatteAbstractChecker {
 		super.visitCtVariableRead(variableRead);
 
 		SymbolicValue sv = symbEnv.get(variableRead.getVariable().getSimpleName());
-		variableRead.putMetadata(EVAL_KEY, sv);
-		logInfo(variableRead.toString() + ": " + sv);
+		if (sv == null) {
+			logInfo(String.format("Symbolic value for variable %s not found in the symbolic environment", variableRead.getVariable().getSimpleName()), variableRead);
+		} else {
+			UniquenessAnnotation ua = permEnv.get(sv);
+			if (ua == null || ua.isBottom()) {
+				logInfo(String.format("%s:%s is not accepted in variable evaluation", sv, ua), variableRead);
+			} else {
+				variableRead.putMetadata(EVAL_KEY, sv);
+				logInfo(variableRead.toString() + ": " + sv);
+			}
+		}
 		loggingSpaces--;
 	}
 
@@ -699,6 +731,9 @@ public class TypeChecker extends LatteAbstractChecker {
 
 		// Add the symbolic value to the environment with an immutable default value
 		permEnv.add(sv, ua);
+
+		// Milestone 3.4: add the formal definition to the refinement path.
+		// refinementPath = refinementPath.addExpression(sv == literal.getValue());
 
 		// Store the symbolic value in metadata
 		literal.putMetadata(EVAL_KEY, sv);
