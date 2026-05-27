@@ -9,7 +9,7 @@ import rj_language.ast.Expression;
 import rj_language.ast.LiteralBoolean;
 
 public class RefinementPath {
-    List<Expression> path;
+    private final List<Expression> path;
 
     public RefinementPath() {
         this.path = List.of();
@@ -25,14 +25,14 @@ public class RefinementPath {
         return new RefinementPath(newPath);
     }
 
-    public BinaryExpression toConjunct() {
+    public Expression toConjunct() {
         if (path.isEmpty()) {
-            return new BinaryExpression(new LiteralBoolean(true), BinaryOperator.AND, new LiteralBoolean(true));
+            return new LiteralBoolean(true);
         }
         Expression result = path.get(0);
         for (int i = 1; i < path.size(); i++) {
             result = new BinaryExpression(result, BinaryOperator.AND, path.get(i));
         }
-        return new BinaryExpression(new LiteralBoolean(true), BinaryOperator.AND, result);
+        return result;
     }
 }
