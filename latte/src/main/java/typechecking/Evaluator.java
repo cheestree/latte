@@ -141,18 +141,14 @@ public class Evaluator {
 				throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
 			}
 
-			if (receiverPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, fieldPerm);
-			} else if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED)) {
-				if (!fieldPerm.isShared()) {
-					throw new IllegalStateException("Shared receiver " + receiverName + " cannot access non-shared field " + fieldName);
-				}
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, fieldPerm);
-			} else {
+			if (!receiverPerm.isGreaterEqualThan(Uniqueness.SHARED)) {
 				throw new IllegalStateException("Receiver permission is too weak for field access: " + receiverPerm);
 			}
+			if (!receiverPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+				throw new IllegalStateException("Shared receiver " + receiverName + " cannot access non-shared field " + fieldName);
+			}
+			fieldValue = symbEnv.addField(receiverValue, fieldName);
+			permEnv.add(fieldValue, fieldPerm);
 		}
 
 		UniquenessAnnotation fieldPerm = requirePermission(fieldValue, permEnv, "field", receiverName + "." + fieldName);
@@ -209,11 +205,8 @@ public class Evaluator {
 	}
 
 	private void ensurePredicatePermission(UniquenessAnnotation perm, String kind, String name) {
-		if (perm.isBottom()) {
-			throw new IllegalStateException("Predicate requires α > shared but found Σ(𝜈)=⊥ for " + kind + " " + name);
-		}
-		if (perm.isShared()) {
-			throw new IllegalStateException("Predicate requires α > shared but found α=shared for " + kind + " " + name);
+		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+			throw new IllegalStateException("Predicate requires α > shared but found α=" + perm + " for " + kind + " " + name);
 		}
 	}
 
