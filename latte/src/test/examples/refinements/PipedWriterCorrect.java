@@ -20,8 +20,8 @@ public class PipedWriterCorrect {
         }
 
         @StateRefinement(
-            from = "this.isConnected == false && reader.isConnected == false", 
-            to = "this.isConnected == true && reader.isConnected == true"
+            from = "this.isConnected == true",
+            to = "this.isConnected == true"
         )
         void write(String s) {
 
