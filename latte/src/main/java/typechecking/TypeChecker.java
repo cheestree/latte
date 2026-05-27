@@ -70,6 +70,8 @@ public class TypeChecker extends LatteAbstractChecker {
 	@Override
 	public <T> void visitCtConstructor(CtConstructor<T> constructor) {
 		logInfo("Visiting constructor <" + constructor.getSimpleName() + ">", constructor);
+		RefinementPath savedRefinementPath = this.refinementPath;
+
 		// T-wf: prepare ρ_pre/ρ_post before Γ; Δ; Σ are extended with formals.
 		ContractContext ctx = beginConstructorContract(constructor);
 		if (ctx != null) {
@@ -90,6 +92,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		if (ctx != null) {
 			contractStack.pop();
 		}
+		this.refinementPath = savedRefinementPath;
 	}
 
 	/**
@@ -110,6 +113,8 @@ public class TypeChecker extends LatteAbstractChecker {
 	@Override
 	public <T> void visitCtMethod(CtMethod<T> method) {
 		logInfo("Visiting method <" + method.getSimpleName() + ">", method);
+		RefinementPath savedRefinementPath = this.refinementPath;
+
 		// T-wf: prepare ρ_pre/ρ_post before Γ; Δ; Σ are extended with formals.
 		ContractContext ctx = beginMethodContract(method);
 		if (ctx != null) {
@@ -129,6 +134,7 @@ public class TypeChecker extends LatteAbstractChecker {
 		if (ctx != null) {
 			contractStack.pop();
 		}
+		this.refinementPath = savedRefinementPath;
 	}
 
 	@Override
