@@ -151,7 +151,11 @@ public class TypeChecker extends LatteAbstractChecker {
 			ctx.typeEnv.put(parameter.getSimpleName(), type);
 			ctx.seenParams++;
 			if (ctx.seenParams == ctx.expectedParams) {
-				evaluatePreIfNeeded(ctx, parameter);
+				CtElement location = parameter.getParent(CtMethod.class);
+				if (location == null) {
+					location = parameter.getParent(CtConstructor.class);
+				}
+				evaluatePreIfNeeded(ctx, location != null ? location : parameter);
 			}
 		}
 
