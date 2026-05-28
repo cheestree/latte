@@ -2,12 +2,12 @@ package helpers;
 
 import java.io.File;
 
-import spoon.Launcher;
-import spoon.reflect.CtModel;
-
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementPath;
 import context.SymbolicEnvironment;
+import spoon.Launcher;
+import spoon.reflect.CtModel;
 import typechecking.LatteClassFirstPass;
 import typechecking.LatteTypeChecker;
 import typechecking.RefinementFirstPass;
@@ -24,8 +24,9 @@ public class TestModelHelper {
         SymbolicEnvironment se = new SymbolicEnvironment();
         PermissionEnvironment pe = new PermissionEnvironment();
         ClassLevelMaps maps = new ClassLevelMaps();
+        RefinementPath ref = new RefinementPath();
         model.getRootPackage().accept(new LatteClassFirstPass(se, pe, maps));
-        model.getRootPackage().accept(new LatteTypeChecker(se, pe, maps));
+        model.getRootPackage().accept(new LatteTypeChecker(se, pe, maps, ref));
         model.getRootPackage().accept(new RefinementFirstPass(se, pe, maps));
         lastMaps = maps;
 
