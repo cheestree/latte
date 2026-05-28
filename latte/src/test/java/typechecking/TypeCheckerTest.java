@@ -22,6 +22,7 @@ public class TypeCheckerTest {
 	}
 
 	@Test
+<<<<<<< HEAD
 	void acceptsInvocationWhenPathEntailsCalleePrecondition() {
 		assertDoesNotThrow(() ->
 			App.launcher("src/test/java/typechecking/cases/InvocationPreconditionPasses.java", false));
@@ -36,6 +37,8 @@ public class TypeCheckerTest {
 	}
 
 	@Test
+=======
+>>>>>>> cadfca3 (Applied suggestions)
 	void rejectsSharedVariableUsedInRefinementPrecondition() {
 		LatteException ex = assertThrows(LatteException.class, () ->
 			App.launcher("src/test/java/typechecking/cases/SharedVariableInPredicateError.java", false));
