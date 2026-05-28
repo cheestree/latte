@@ -499,16 +499,15 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			CtParameter<?> parameter = c.getParameters().get(i);
 			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
 			UniquenessAnnotation actualUA = permEnv.get(argSV);
-			// EvalArgs: borrowed ≤ αᵢ is required for the distinct set.
-			if (!actualUA.isGreaterEqualThan(Uniqueness.BORROWED)) {
-				logError(String.format("Symbolic value %s:%s is not greater than BORROWED", argSV, actualUA), arg);
-			}
 			// EvalArgs: Σ ⊢ 𝜈ᵢ : αᵢ ⊣ Σ′.
 			logInfo(String.format("Checking constructor argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA), constCall);
 			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
 				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
 			}
-			paramSymbValues.add(argSV);
+			// EvalArgs: include only args whose expected permission satisfies borrowed ≤ αᵢ.
+			if (expectedUA.isGreaterEqualThan(Uniqueness.BORROWED)) {
+				paramSymbValues.add(argSV);
+			}
 		}
 
 		// EvalArgs: distinct(Δ, {𝜈ᵢ : borrowed ≤ αᵢ}).
@@ -806,12 +805,11 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		}
 
 		// PrepareTarget ③ / UpdatePerms ⑥: fresh target 𝜈′ carrying α_ret.
-		SymbolicValue freshTarget = symbEnv.addVariable(assignee.getVariable().getSimpleName());
 		UniquenessAnnotation returnPerm = permEnv.get(returnSV);
 		if (returnPerm == null) {
 			returnPerm = new UniquenessAnnotation(Uniqueness.SHARED);
+    		permEnv.add(returnSV, returnPerm);
 		}
-		permEnv.add(freshTarget, returnPerm);
 
 		RefinementContract contract = maps.getMethodContract(klass, methodName, invocation.getArguments().size());
 		if (contract != null && contract.getFrom() != null) {
@@ -832,9 +830,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			}
 		}
 
-		// UpdatePerms ⑥: Δ[y ↦ 𝜈_ret] followed by simplification.
-		symbEnv.addVarSymbolicValue(assignee.getVariable().getSimpleName(), freshTarget);
-		ClassLevelMaps.simplify(symbEnv, permEnv);
+		// UpdatePerms ⑥: Δ[y ↦ 𝜈_ret], where simplification is handled by visitCtAssignment.
+		symbEnv.addVarSymbolicValue(assignee.getVariable().getSimpleName(), returnSV);
 	}
 
 	private ContractContext beginMethodContract(CtMethod<?> method) {
