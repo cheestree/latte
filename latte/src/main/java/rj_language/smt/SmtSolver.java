@@ -2,6 +2,7 @@ package rj_language.smt;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,6 +12,7 @@ import com.microsoft.z3.BoolExpr;
 import com.microsoft.z3.Context;
 import com.microsoft.z3.Expr;
 import com.microsoft.z3.FuncDecl;
+import com.microsoft.z3.Model;
 import com.microsoft.z3.Solver;
 import com.microsoft.z3.Sort;
 import com.microsoft.z3.Status;
@@ -30,8 +32,12 @@ import rj_language.ast.Var;
 
 public class SmtSolver {
     public boolean entails(Expression assumptions, Expression goal) {
+        return checkEntailment(assumptions, goal).entailed();
+    }
+
+    public EntailmentResult checkEntailment(Expression assumptions, Expression goal) {
         if (goal == null) {
-            return true;
+            return new EntailmentResult(true, Status.UNSATISFIABLE, Map.of());
         }
         try (Context ctx = new Context()) {
             Encoder encoder = new Encoder(ctx);
@@ -43,9 +49,18 @@ public class SmtSolver {
             solver.add(ctx.mkNot(goalExpr));
 
             Status status = solver.check();
-            return status == Status.UNSATISFIABLE;
+            Map<String, String> counterexample = status == Status.SATISFIABLE
+                ? encoder.counterexample(solver.getModel())
+                : Map.of();
+            return new EntailmentResult(status == Status.UNSATISFIABLE, status, counterexample);
         }
     }
+
+    public record EntailmentResult(
+        boolean entailed,
+        Status status,
+        Map<String, String> counterexample
+    ) {}
 
     private static final class Encoder {
         private final Context ctx;
@@ -200,6 +215,19 @@ public class SmtSolver {
             FunctionSignature signature = new FunctionSignature(invocation.getName(), returnSort, argSorts);
             FuncDecl<?> decl = functions.computeIfAbsent(signature, sig -> ctx.mkFuncDecl(sig.name, sig.argSorts, sig.returnSort));
             return decl.apply(argExprs);
+        }
+
+        private Map<String, String> counterexample(Model model) {
+            Map<String, String> values = new LinkedHashMap<>();
+            symbols.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> {
+                    Expr value = model.evaluate(entry.getValue(), false);
+                    if (value != null) {
+                        values.put(entry.getKey(), value.toString());
+                    }
+                });
+            return Map.copyOf(values);
         }
     }
 
