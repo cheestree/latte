@@ -167,12 +167,11 @@ public class SmtEncoder {
         for (int i = 0; i < args.size(); i++) {
             Expression arg = args.get(i);
             if (isBoolLike(arg)) {
-                argSorts[i] = ctx.getBoolSort();
                 argExprs[i] = toBool(arg);
             } else {
-                argSorts[i] = ctx.getIntSort();
                 argExprs[i] = toArith(arg);
-            }
+            }             
+            argSorts[i] = argExprs[i].getSort();
         }
 
         FunctionSignature signature = new FunctionSignature(invocation.getName(), returnSort, argSorts);

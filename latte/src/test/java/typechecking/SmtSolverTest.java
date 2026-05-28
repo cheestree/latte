@@ -31,7 +31,6 @@ public class SmtSolverTest {
             BinaryOperator.GT,
             new LiteralInt(0));
 
-        assertTrue(solver.checkEntailment(assumptions, goal).entailed());
         SmtSolver.EntailmentResult result = solver.checkEntailment(assumptions, goal);
         assertTrue(result.entailed());
         assertTrue(result.counterexample().isEmpty());
@@ -52,7 +51,6 @@ public class SmtSolverTest {
             BinaryOperator.EQ,
             new LiteralInt(2));
 
-        assertFalse(solver.checkEntailment(assumptions, goal).entailed());
         SmtSolver.EntailmentResult result = solver.checkEntailment(assumptions, goal);
         assertFalse(result.entailed());
         assertEquals("1", result.counterexample().get("v0"));
@@ -94,7 +92,7 @@ public class SmtSolverTest {
         SmtSolver solver = new SmtSolver();
         // Assumption: none (i.e., true)
         // Goal: v0 == 1
-        // Counterexample: false
+        // Counterexample: any v0 != 1
         Expression goal = new BinaryExpression(
             new Var("v0"),
             BinaryOperator.EQ,

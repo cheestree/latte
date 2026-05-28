@@ -22,6 +22,20 @@ public class TypeCheckerTest {
 	}
 
 	@Test
+	void acceptsInvocationWhenPathEntailsCalleePrecondition() {
+		assertDoesNotThrow(() ->
+			App.launcher("src/test/java/typechecking/cases/InvocationPreconditionPasses.java", false));
+	}
+
+	@Test
+	void rejectsInvocationWhenPathDoesNotEntailCalleePrecondition() {
+		LatteException ex = assertThrows(LatteException.class, () ->
+			App.launcher("src/test/java/typechecking/cases/InvocationPreconditionFails.java", false));
+
+		assertTrue(ex.getMessage().contains("Refinement precondition failed for invocation requiresPositive"));
+	}
+
+	@Test
 	void rejectsSharedVariableUsedInRefinementPrecondition() {
 		LatteException ex = assertThrows(LatteException.class, () ->
 			App.launcher("src/test/java/typechecking/cases/SharedVariableInPredicateError.java", false));

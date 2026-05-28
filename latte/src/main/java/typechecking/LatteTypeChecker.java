@@ -16,6 +16,7 @@ import context.SymbolicValue;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
+import rj_language.smt.SmtSolver;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtConstructorCall;
@@ -45,6 +46,7 @@ import spoon.support.reflect.code.CtVariableWriteImpl;
 public class LatteTypeChecker extends LatteAbstractChecker {
 	private final Deque<ContractContext> contractStack = new ArrayDeque<>();
     private RefinementPath refinementPath;
+	private SmtSolver solver;
 
 	public LatteTypeChecker(
 		SymbolicEnvironment symbEnv,
@@ -54,6 +56,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 	) {
 		super(symbEnv, permEnv, maps);
 		this.refinementPath = refinementPath;
+		this.solver = new SmtSolver();
 		logInfo("[ Type Checker initialized ]");
 	}
 
@@ -822,13 +825,9 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 
 		RefinementContract contract = maps.getMethodContract(klass, methodName, invocation.getArguments().size());
 		if (contract != null && contract.getFrom() != null) {
-			// CheckPre ④, partial: formal-to-actual substitution is TODO;
-			// phase 3.1 validates and assumes ρ_pre under current Γ; Δ; Σ.
-			try {
-				evaluateAndAssumePre(contract.getFrom(), buildInvocationTypeEnv(invocation));
-			} catch (IllegalStateException ex) {
-				logError("Refinement precondition failed: " + ex.getMessage(), invocation);
-			}
+			// CheckPre ④: evaluate the callee precondition with call-site actuals
+			// and prove it from the current refinement path.
+			checkInvocationPrecondition(contract.getFrom(), method, invocation, invocation);
 		}
 
 		// UpdatePerms ⑥, partial: actuals whose current permission is unique become ⊥.
@@ -928,6 +927,69 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 	private void restoreRefinementPath(int size) {
 		while (refinementPath.path.size() > size) {
 			refinementPath.path.remove(refinementPath.path.size() - 1);
+		}
+	}
+
+	private void checkInvocationPrecondition(
+		Expression pre,
+		CtMethod<?> method,
+		CtInvocation<?> invocation,
+		CtElement location) {
+		try {
+			enterInvocationActualScope(method, invocation, location);
+			Expression predicate = evaluateInvocationPrecondition(pre, invocation);
+			if (predicate == null) {
+				return;
+			}
+			requireEntailedByCurrentPath(predicate, invocation, location);
+		} catch (IllegalStateException ex) {
+			logError("Refinement precondition failed for invocation "
+				+ invocation.getExecutable().getSimpleName() + ": " + ex.getMessage(), location);
+		} finally {
+			permEnv.exitScope();
+			symbEnv.exitScope();
+		}
+	}
+
+	private void enterInvocationActualScope(
+		CtMethod<?> method,
+		CtInvocation<?> invocation,
+		CtElement location) {
+		symbEnv.enterScope();
+		permEnv.enterScope();
+
+		CtExpression<?> target = invocation.getTarget();
+		if (target != null) {
+			SymbolicValue receiverSV = (SymbolicValue) target.getMetadata(EVAL_KEY);
+			if (receiverSV != null) {
+				symbEnv.addVarSymbolicValue(THIS, receiverSV);
+			}
+		}
+		for (int i = 0; i < invocation.getArguments().size(); i++) {
+			CtExpression<?> arg = invocation.getArguments().get(i);
+			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
+			if (argSV == null) {
+				logError("Symbolic value for invocation argument not found", location);
+			}
+			symbEnv.addVarSymbolicValue(method.getParameters().get(i).getSimpleName(), argSV);
+		}
+	}
+
+	private Expression evaluateInvocationPrecondition(Expression pre, CtInvocation<?> invocation) {
+		return new Evaluator(maps, buildInvocationTypeEnv(invocation), symbEnv, permEnv)
+			.evalPredicate(pre);
+	}
+
+	private void requireEntailedByCurrentPath(
+		Expression predicate,
+		CtInvocation<?> invocation,
+		CtElement location) {
+		SmtSolver.EntailmentResult result = solver.checkEntailment(
+			this.refinementPath.toConjunct(),
+			predicate);
+		if (!result.entailed()) {
+			logError("Refinement precondition failed for invocation "
+				+ invocation.getExecutable().getSimpleName(), location);
 		}
 	}
 
