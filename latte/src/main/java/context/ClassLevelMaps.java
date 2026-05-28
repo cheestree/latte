@@ -112,7 +112,7 @@ public class ClassLevelMaps {
         return null;
     }
 
-    public CtConstructor<?> geCtConstructor (CtClass<?> klass, int numParams){
+    public CtConstructor<?> getCtConstructor (CtClass<?> klass, int numParams){
         if (classConstructors.containsKey(klass)){
             Map<Integer, CtConstructor<?>> l = classConstructors.get(klass);
             if (l.containsKey(numParams)){
@@ -123,7 +123,7 @@ public class ClassLevelMaps {
     }
 
     public RefinementContract getConstructorContract(CtClass<?> klass, int numParams) {
-        CtConstructor<?> c = geCtConstructor(klass, numParams);
+        CtConstructor<?> c = getCtConstructor(klass, numParams);
         if (c == null) {
             return null;
         }
