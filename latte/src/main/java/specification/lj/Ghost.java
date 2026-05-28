@@ -40,5 +40,5 @@ public @interface Ghost {
      * }
      * </pre>
      */
-    String value();
+    String value() default "";
 }

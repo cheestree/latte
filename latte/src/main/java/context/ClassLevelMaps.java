@@ -12,15 +12,16 @@ import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.reference.CtTypeReference;
+import utils.Constants;
+import rj_language.ast.Expression;
 
 public class ClassLevelMaps {
-   
+
     static ClassLevelMaps instance;
     Map<CtTypeReference<?>, CtClass<?>> typeClassMap;
     Map<CtClass<?>, Map<String, CtField<?>>> classFields;
     Map<CtClass<?>, Map<Integer, CtConstructor<?>>> classConstructors;
     Map<CtClass<?>, Map<Pair<String, Integer>, CtMethod<?>>> classMethods;
-    
 
 
     public ClassLevelMaps() {
@@ -73,6 +74,19 @@ public class ClassLevelMaps {
         }
     }
 
+    public boolean isGhostField(String className, String fieldName) {
+        for (Map.Entry<CtClass<?>, Map<String, CtField<?>>> e : classFields.entrySet()) {
+            CtClass<?> klass = e.getKey();
+            if (klass.getSimpleName().equals(className)) {
+                Map<String, CtField<?>> fields = e.getValue();
+                if (fields != null && fields.containsKey(fieldName)) {
+                    return Boolean.TRUE.equals(fields.get(fieldName).getMetadata(Constants.FIELD_GHOST_KEY));
+                }
+            }
+        }
+        return false;
+    }
+
     public UniquenessAnnotation getFieldAnnotation(String fieldName, CtTypeReference<?> type) {
         CtClass<?> klass = getClassFrom(type);
         if (classFields.containsKey(klass)){
@@ -81,6 +95,18 @@ public class ClassLevelMaps {
                 CtField<?> field = m.get(fieldName);
                 UniquenessAnnotation annotation = new UniquenessAnnotation(field);
                 return annotation;
+            }
+        }
+        return null;
+    }
+
+    public Expression getFieldRefinement(String fieldName, CtTypeReference<?> type) {
+        CtClass<?> klass = getClassFrom(type);
+        if (classFields.containsKey(klass)) {
+            Map<String, CtField<?>> m = classFields.get(klass);
+            if (m.containsKey(fieldName)) {
+                CtField<?> field = m.get(fieldName);
+                return (Expression) field.getMetadata(Constants.FIELD_REFINEMENT_KEY);
             }
         }
         return null;
@@ -96,6 +122,14 @@ public class ClassLevelMaps {
         return null;
     }
 
+    public RefinementContract getConstructorContract(CtClass<?> klass, int numParams) {
+        CtConstructor<?> c = geCtConstructor(klass, numParams);
+        if (c == null) {
+            return null;
+        }
+        return (RefinementContract) c.getMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY);
+    }
+
     public CtMethod<?> getCtMethod(CtClass<?> klass, String methodName, int numParams){
         Pair<String, Integer> mPair = Pair.of(methodName, numParams);
         if (classMethods.containsKey(klass)){
@@ -106,6 +140,14 @@ public class ClassLevelMaps {
         }
         return null;
     } 
+
+    public RefinementContract getMethodContract(CtClass<?> klass, String methodName, int numParams) {
+        CtMethod<?> m = getCtMethod(klass, methodName, numParams);
+        if (m == null) {
+            return null;
+        }
+        return (RefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
+    }
 
     public static void simplify(SymbolicEnvironment symbEnv, PermissionEnvironment permEnv) {
         // 1) Remove unreachable values
