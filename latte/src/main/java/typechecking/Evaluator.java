@@ -3,6 +3,7 @@ package typechecking;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
@@ -37,11 +38,11 @@ public class Evaluator {
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
-		RefinementPath path = refinementPath != null ? refinementPath : new RefinementPath();
+		Objects.requireNonNull(refinementPath, "refinementPath");
 		if (predicate == null) {
-			return new PredicateEvalResult(null, symbEnv, permEnv, path);
+			return new PredicateEvalResult(null, symbEnv, permEnv, refinementPath);
 		}
-		return evalExpression(predicate, typeEnv, symbEnv, permEnv, path);
+		return evalExpression(predicate, typeEnv, symbEnv, permEnv, refinementPath);
 	}
 
 	private PredicateEvalResult evalExpression(
@@ -140,12 +141,12 @@ public class Evaluator {
 			if (fieldPerm == null) {
 				throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
 			}
-
-			if (!receiverPerm.isGreaterEqualThan(Uniqueness.SHARED)) {
-				throw new IllegalStateException("Receiver permission is too weak for field access: " + receiverPerm);
+			if (receiverPerm.isBottom()) {
+				throw new IllegalStateException("Receiver is inaccessible in predicate: " + receiverName);
 			}
-			if (!receiverPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-				throw new IllegalStateException("Shared receiver " + receiverName + " cannot access non-shared field " + fieldName);
+
+			if (!fieldPerm.isShared() && !receiverPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+				throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
 			}
 			fieldValue = symbEnv.addField(receiverValue, fieldName);
 			permEnv.add(fieldValue, fieldPerm);
