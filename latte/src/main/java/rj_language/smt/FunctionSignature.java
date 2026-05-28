@@ -25,7 +25,7 @@ public class FunctionSignature {
     }
 
     public Sort[] getArgSorts() {
-        return argSorts;
+        return argSorts.clone();
     }
 
     @Override

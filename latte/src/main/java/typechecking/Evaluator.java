@@ -47,10 +47,6 @@ public class Evaluator {
 		this.smtSolver = new SmtSolver();
 	}
 
-	public boolean entails(Expression refinementPath, Expression predicate) {
-		return smtSolver.entails(refinementPath, predicate);
-	}
-
 	public Expression evalPredicate(Expression predicate) {
 		if (predicate == null) {
 			return null;
