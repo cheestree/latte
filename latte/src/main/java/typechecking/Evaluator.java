@@ -31,6 +31,10 @@ public class Evaluator {
 	private final PermissionEnvironment permEnv;
 	private final SmtSolver smtSolver;
 
+	public Evaluator(ClassLevelMaps maps) {
+		this(maps, Map.of(), null, null);
+	}
+
 	public Evaluator(
 		ClassLevelMaps maps,
 		Map<String, CtTypeReference<?>> typeEnv,
