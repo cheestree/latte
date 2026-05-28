@@ -16,6 +16,12 @@ public class TypeCheckerTest {
 	}
 
 	@Test
+	void acceptsSharedConstructorArgumentForSharedParameter() {
+		assertDoesNotThrow(() ->
+			App.launcher("src/test/java/typechecking/cases/SharedConstructorArgumentPasses.java", false));
+	}
+
+	@Test
 	void rejectsSharedVariableUsedInRefinementPrecondition() {
 		LatteException ex = assertThrows(LatteException.class, () ->
 			App.launcher("src/test/java/typechecking/cases/SharedVariableInPredicateError.java", false));
