@@ -3,7 +3,6 @@ package typechecking;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
@@ -27,36 +26,41 @@ import spoon.reflect.reference.CtTypeReference;
 
 public class Evaluator {
 	private final ClassLevelMaps maps;
+	private final Map<String, CtTypeReference<?>> typeEnv;
+	private final SymbolicEnvironment symbEnv;
+	private final PermissionEnvironment permEnv;
+	private final RefinementPath refinementPath;
 
-	public Evaluator(ClassLevelMaps maps) {
-		this.maps = maps;
-	}
-
-	public PredicateEvalResult evalPredicate(
-		Expression predicate,
+	public Evaluator(
+		ClassLevelMaps maps,
 		Map<String, CtTypeReference<?>> typeEnv,
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
-		Objects.requireNonNull(refinementPath, "refinementPath");
+		if (refinementPath == null) {
+			throw new IllegalArgumentException("refinementPath cannot be null");
+		}
+		this.maps = maps;
+		this.typeEnv = typeEnv;
+		this.symbEnv = symbEnv;
+		this.permEnv = permEnv;
+		this.refinementPath = refinementPath;
+	}
+
+	public PredicateEvalResult evalPredicate(Expression predicate) {
 		if (predicate == null) {
 			return new PredicateEvalResult(null, symbEnv, permEnv, refinementPath);
 		}
-		return evalExpression(predicate, typeEnv, symbEnv, permEnv, refinementPath);
+		return evalExpression(predicate);
 	}
 
-	private PredicateEvalResult evalExpression(
-		Expression expression,
-		Map<String, CtTypeReference<?>> typeEnv,
-		SymbolicEnvironment symbEnv,
-		PermissionEnvironment permEnv,
-		RefinementPath refinementPath) {
+	private PredicateEvalResult evalExpression(Expression expression) {
 		// T-Pred-var / T-Pred-field: first evaluate to 𝜈, then require α > shared.
 		if (expression instanceof Var var) {
-			return evalVar(var, symbEnv, permEnv, refinementPath);
+			return evalVar(var);
 		}
 		if (expression instanceof FieldAccess fieldAccess) {
-			return evalFieldAccess(fieldAccess, typeEnv, symbEnv, permEnv, refinementPath);
+			return evalFieldAccess(fieldAccess);
 		}
 		// Pred-const: constants, including result, preserve Δ; Σ; φ.
 		if (expression instanceof LiteralBoolean
@@ -68,8 +72,7 @@ public class Evaluator {
 		}
 		// T-Pred: recursively validate operands left-to-right and thread Δ; Σ; φ.
 		if (expression instanceof UnaryExpression unaryExpression) {
-			PredicateEvalResult operand = evalExpression(
-				unaryExpression.getExpression(), typeEnv, symbEnv, permEnv, refinementPath);
+			PredicateEvalResult operand = evalExpression(unaryExpression.getExpression());
 			return new PredicateEvalResult(
 				new UnaryExpression(unaryExpression.getOperator(), operand.predicate()),
 				operand.symbEnv(),
@@ -77,10 +80,8 @@ public class Evaluator {
 				operand.refinementPath());
 		}
 		if (expression instanceof BinaryExpression binaryExpression) {
-			PredicateEvalResult left = evalExpression(
-				binaryExpression.getLeft(), typeEnv, symbEnv, permEnv, refinementPath);
-			PredicateEvalResult right = evalExpression(
-				binaryExpression.getRight(), typeEnv, left.symbEnv(), left.permEnv(), left.refinementPath());
+			PredicateEvalResult left = evalExpression(binaryExpression.getLeft());
+			PredicateEvalResult right = evalExpression(binaryExpression.getRight());
 			// Milestone 3.1: predicate binary operators pass through after their
 			// operands are evaluated to symbolic form. Milestone 3.4 will add
 			// fresh result equalities for program-expression EvalBinary.
@@ -91,17 +92,13 @@ public class Evaluator {
 				right.refinementPath());
 		}
 		if (expression instanceof FunctionInvocation invocation) {
-			return evalFunctionInvocation(invocation, typeEnv, symbEnv, permEnv, refinementPath);
+			return evalFunctionInvocation(invocation);
 		}
 
 		throw new IllegalStateException("Unsupported predicate expression: " + expression.getClass().getSimpleName());
 	}
 
-	private PredicateEvalResult evalVar(
-		Var var,
-		SymbolicEnvironment symbEnv,
-		PermissionEnvironment permEnv,
-		RefinementPath refinementPath) {
+	private PredicateEvalResult evalVar(Var var) {
 		// T-Pred-var premise 1: EvalVar gives Δ(x)=𝜈 and Σ(𝜈) ≠ ⊥.
 		String name = var.getName();
 		SymbolicValue value = requireSymbolicValue(name, symbEnv);
@@ -111,12 +108,7 @@ public class Evaluator {
 		return new PredicateEvalResult(new Var(value.toString()), symbEnv, permEnv, refinementPath);
 	}
 
-	private PredicateEvalResult evalFieldAccess(
-		FieldAccess fieldAccess,
-		Map<String, CtTypeReference<?>> typeEnv,
-		SymbolicEnvironment symbEnv,
-		PermissionEnvironment permEnv,
-		RefinementPath refinementPath) {
+	private PredicateEvalResult evalFieldAccess(FieldAccess fieldAccess) {
 		// T-Pred-field premise 1: evaluate x.f ⇓ 𝜈 through EvalField.
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
@@ -159,30 +151,19 @@ public class Evaluator {
 		return new PredicateEvalResult(new Var(fieldValue.toString()), symbEnv, permEnv, refinementPath);
 	}
 
-	private PredicateEvalResult evalFunctionInvocation(
-		FunctionInvocation invocation,
-		Map<String, CtTypeReference<?>> typeEnv,
-		SymbolicEnvironment symbEnv,
-		PermissionEnvironment permEnv,
-		RefinementPath refinementPath) {
+	private PredicateEvalResult evalFunctionInvocation(FunctionInvocation invocation) {
 		List<Expression> newArgs = new ArrayList<>();
-		SymbolicEnvironment currentSymb = symbEnv;
-		PermissionEnvironment currentPerm = permEnv;
-		RefinementPath currentPath = refinementPath;
 
 		for (Expression arg : invocation.getArguments()) {
-			PredicateEvalResult argResult = evalExpression(arg, typeEnv, currentSymb, currentPerm, currentPath);
+			PredicateEvalResult argResult = evalExpression(arg);
 			newArgs.add(argResult.predicate());
-			currentSymb = argResult.symbEnv();
-			currentPerm = argResult.permEnv();
-			currentPath = argResult.refinementPath();
 		}
 
 		return new PredicateEvalResult(
 			new FunctionInvocation(invocation.getName(), newArgs),
-			currentSymb,
-			currentPerm,
-			currentPath);
+			symbEnv,
+			permEnv,
+			refinementPath);
 	}
 
 	private SymbolicValue requireSymbolicValue(String name, SymbolicEnvironment symbEnv) {
