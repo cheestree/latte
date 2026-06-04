@@ -176,6 +176,17 @@ public class EvaluatorTest {
 		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
 	}
 
+	@Test
+	void predFieldRejectsSharedReceiverWhenFieldAlreadyTracked() throws Exception {
+		SymbolicValue x = addVariable("x", Uniqueness.FREE);
+		SymbolicValue field = symbEnv.addField(x, "isConnected");
+		permEnv.add(field, new UniquenessAnnotation(Uniqueness.IMMUTABLE));
+		permEnv.add(x, new UniquenessAnnotation(Uniqueness.SHARED));
+		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv);
+
+		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+	}
+
 	private SymbolicValue addVariable(String name, Uniqueness permission) {
 		SymbolicValue value = symbEnv.addVariable(name);
 		permEnv.add(value, new UniquenessAnnotation(permission));
