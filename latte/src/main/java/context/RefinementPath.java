@@ -1,5 +1,6 @@
 package context;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import rj_language.ast.BinaryExpression;
@@ -7,15 +8,17 @@ import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.LiteralBoolean;
 
-public class RefinementPath {     
-    private final List<Expression> path;
+public class RefinementPath {
+    public final List<Expression> path;
 
-    public RefinementPath() {         
-        this(List.of());
+    public RefinementPath() {
+        this.path = new ArrayList<>();
     }
 
-    public RefinementPath(List<Expression> path) {
-        this.path = List.copyOf(path);
+    public void addExpression(Expression expression) {
+        if (expression != null) {
+            path.add(expression);
+        }
     }
 
     public List<Expression> getPath() {
