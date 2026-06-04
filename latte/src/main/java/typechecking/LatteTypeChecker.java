@@ -989,8 +989,11 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			this.refinementPath.toConjunct(),
 			predicate);
 		if (!result.entailed()) {
+			String details = result.counterexample().isEmpty()
+				? " (status=" + result.status() + ")"
+				: " (status=" + result.status() + ", counterexample=" + result.counterexample() + ")";
 			logError("Refinement precondition failed for invocation "
-				+ invocation.getExecutable().getSimpleName(), location);
+				+ invocation.getExecutable().getSimpleName() + details, location);
 		}
 	}
 
