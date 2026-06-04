@@ -3,7 +3,6 @@ package typechecking;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.junit.jupiter.api.Test;
 
 import api.App;
@@ -22,7 +21,6 @@ public class TypeCheckerTest {
 	}
 
 	@Test
-<<<<<<< HEAD
 	void acceptsInvocationWhenPathEntailsCalleePrecondition() {
 		assertDoesNotThrow(() ->
 			App.launcher("src/test/java/typechecking/cases/InvocationPreconditionPasses.java", false));
@@ -37,8 +35,6 @@ public class TypeCheckerTest {
 	}
 
 	@Test
-=======
->>>>>>> cadfca3 (Applied suggestions)
 	void rejectsSharedVariableUsedInRefinementPrecondition() {
 		LatteException ex = assertThrows(LatteException.class, () ->
 			App.launcher("src/test/java/typechecking/cases/SharedVariableInPredicateError.java", false));
