@@ -26,8 +26,8 @@ public class TestModelHelper {
         ClassLevelMaps maps = new ClassLevelMaps();
         RefinementPath ref = new RefinementPath();
         model.getRootPackage().accept(new LatteClassFirstPass(se, pe, maps));
-        model.getRootPackage().accept(new LatteTypeChecker(se, pe, maps, ref));
         model.getRootPackage().accept(new RefinementFirstPass(se, pe, maps));
+        model.getRootPackage().accept(new LatteTypeChecker(se, pe, maps, ref));
         lastMaps = maps;
 
         return model;

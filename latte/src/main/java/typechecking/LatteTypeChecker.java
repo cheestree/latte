@@ -43,7 +43,6 @@ import spoon.support.reflect.code.CtVariableReadImpl;
 import spoon.support.reflect.code.CtVariableWriteImpl;
 
 public class LatteTypeChecker extends LatteAbstractChecker {
-	private final Evaluator eval;
 	private final Deque<ContractContext> contractStack = new ArrayDeque<>();
     private RefinementPath refinementPath;
 
@@ -54,7 +53,6 @@ public class LatteTypeChecker extends LatteAbstractChecker {
         RefinementPath refinementPath
 	) {
 		super(symbEnv, permEnv, maps);
-		this.eval = new Evaluator(maps);
 		this.refinementPath = refinementPath;
 		logInfo("[ Type Checker initialized ]");
 	}
@@ -70,7 +68,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 	@Override
 	public <T> void visitCtConstructor(CtConstructor<T> c) {
 		logInfo("Visiting constructor <"+ c.getSimpleName()+">", c);
-		RefinementPath savedRefinementPath = this.refinementPath;
+		int savedRefinementPathSize = refinementPath.path.size();
 
 		// T-wf: prepare ρ_pre/ρ_post before Γ; Δ; Σ are extended with formals.
 		ContractContext ctx = beginConstructorContract(c);
@@ -92,7 +90,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		if (ctx != null) {
 			contractStack.pop();
 		}
-		this.refinementPath = savedRefinementPath;
+		restoreRefinementPath(savedRefinementPathSize);
 	}
 
 	/**
@@ -113,7 +111,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 	@Override
 	public <T> void visitCtMethod(CtMethod<T> m) {
 		logInfo("Visiting method <"+ m.getSimpleName()+">", m);
-		RefinementPath savedRefinementPath = this.refinementPath;
+		int savedRefinementPathSize = refinementPath.path.size();
 
 		// T-wf: prepare ρ_pre/ρ_post before Γ; Δ; Σ are extended with formals.
 		ContractContext ctx = beginMethodContract(m);
@@ -134,7 +132,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		if (ctx != null) {
 			contractStack.pop();
 		}
-		this.refinementPath = savedRefinementPath;
+		restoreRefinementPath(savedRefinementPathSize);
 	}
 	
 
@@ -593,9 +591,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			evaluatePreIfNeeded(ctx, returnStatement);
 			// T-Method TODO: ρ_post ⇓ ρ_post′ and ⊢SMT ρ_post′[𝜈ᵣ/result].
 			/* 
-			Evaluator.PredicateEvalResult postResult = eval.evalPredicate(
-				ctx.post, ctx.typeEnv, symbEnv, permEnv, this.refinementPath);
-			Expression postPredicate = postResult.getPredicate();
+			Expression postPredicate = new Evaluator(maps, ctx.typeEnv, symbEnv, permEnv)
+				.evalPredicate(ctx.post);
 			if (this.refinementPath != null && postPredicate != null
 				&& !eval.entails(this.refinementPath, postPredicate)) {
 				logError("Refinement postcondition not satisfied for " + ctx.label, returnStatement);
@@ -887,16 +884,20 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		String label) {
 		try {
 			// T-Method/CheckPre: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′.
-			Evaluator.PredicateEvalResult preResult = eval.evalPredicate(
-				pre, typeEnv, symbEnv, permEnv, this.refinementPath);
+			Expression prePredicate = new Evaluator(maps, typeEnv, symbEnv, permEnv)
+				.evalPredicate(pre);
 			// T-Method/CheckPre: continue under 𝜑 ∧ ρ_pre′.
-			RefinementPath path = preResult.refinementPath();
-			if (preResult.predicate() != null) {
-				path = path.addExpression(preResult.predicate());
+			if (prePredicate != null) {
+				this.refinementPath.addExpression(prePredicate);
 			}
-			this.refinementPath = path;
 		} catch (IllegalStateException ex) {
 			logError("Refinement precondition failed" + label + ": " + ex.getMessage(), location);
+		}
+	}
+
+	private void restoreRefinementPath(int size) {
+		while (refinementPath.path.size() > size) {
+			refinementPath.path.remove(refinementPath.path.size() - 1);
 		}
 	}
 
