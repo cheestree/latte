@@ -192,7 +192,7 @@ public class SmtEncoder {
                 default -> false;
             };
         }
-        return expression instanceof FunctionInvocation;
+        return false;
     }
 
     public Map<String, String> counterexample(Model model) {
