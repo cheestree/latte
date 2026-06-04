@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
-import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
 import context.Uniqueness;
@@ -63,21 +62,21 @@ public class EvaluatorTest {
 	@Test
 	void predConstPassesThroughUnchanged() throws Exception {
 		Expression literal = RefinementsParser.createAST("true");
-		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
-		Evaluator.PredicateEvalResult result = evaluator.evalPredicate(literal);
+		Expression result = evaluator.evalPredicate(literal);
 
-		assertSame(literal, result.predicate());
+		assertSame(literal, result);
 	}
 
 	@Test
 	void predVarSubstitutesVariableWithSymbolicValue() throws Exception {
 		SymbolicValue x = addVariable("x", Uniqueness.BORROWED);
-		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
-		Evaluator.PredicateEvalResult result = evaluator.evalPredicate(RefinementsParser.createAST("x"));
+		Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x"));
 
-		assertEquals(x.toString(), ExpressionPrettyPrinter.print(result.predicate()));
+		assertEquals(x.toString(), ExpressionPrettyPrinter.print(result));
 	}
 
 	@Test
@@ -85,28 +84,28 @@ public class EvaluatorTest {
 		SymbolicValue x = addVariable("x", Uniqueness.BORROWED);
 		SymbolicValue field = symbEnv.addField(x, "isConnected");
 		permEnv.add(field, new UniquenessAnnotation(Uniqueness.IMMUTABLE));
-		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv);
 
-		Evaluator.PredicateEvalResult result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
+		Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
 
-		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result.predicate()));
+		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result));
 	}
 
 	@Test
 	void predFieldCreatesFreshFieldForExclusiveReceiver() throws Exception {
 		SymbolicValue x = addVariable("x", Uniqueness.FREE);
-		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv);
 
-		Evaluator.PredicateEvalResult result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
+		Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
 
 		SymbolicValue field = symbEnv.get(x, "isConnected");
-		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result.predicate()));
+		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result));
 		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(field));
 	}
 
 	@Test
 	void predVarRejectsUnknownVariable() {
-		Evaluator missingEvaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, new RefinementPath());
+		Evaluator missingEvaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
 		assertThrows(IllegalStateException.class, () -> missingEvaluator.evalPredicate(RefinementsParser.createAST("missing")));
 	}
@@ -114,7 +113,7 @@ public class EvaluatorTest {
 	@Test
 	void predVarRejectsSharedVariable() {
 		addVariable("x", Uniqueness.SHARED);
-		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
 		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x")));
 	}
@@ -122,7 +121,7 @@ public class EvaluatorTest {
 	@Test
 	void predVarRejectsBottomVariable() {
 		addVariable("x", Uniqueness.BOTTOM);
-		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
 		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x")));
 	}
@@ -130,7 +129,7 @@ public class EvaluatorTest {
 	@Test
 	void predFieldRejectsSharedReceiverForNonSharedField() throws Exception {
 		addVariable("x", Uniqueness.SHARED);
-		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, new RefinementPath());
+		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv);
 
 		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
 	}

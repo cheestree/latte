@@ -6,7 +6,6 @@ import java.util.Map;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
-import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
 import context.Uniqueness;
@@ -29,32 +28,26 @@ public class Evaluator {
 	private final Map<String, CtTypeReference<?>> typeEnv;
 	private final SymbolicEnvironment symbEnv;
 	private final PermissionEnvironment permEnv;
-	private final RefinementPath refinementPath;
 
 	public Evaluator(
 		ClassLevelMaps maps,
 		Map<String, CtTypeReference<?>> typeEnv,
 		SymbolicEnvironment symbEnv,
-		PermissionEnvironment permEnv,
-		RefinementPath refinementPath) {
-		if (refinementPath == null) {
-			throw new IllegalArgumentException("refinementPath cannot be null");
-		}
+		PermissionEnvironment permEnv) {
 		this.maps = maps;
 		this.typeEnv = typeEnv;
 		this.symbEnv = symbEnv;
 		this.permEnv = permEnv;
-		this.refinementPath = refinementPath;
 	}
 
-	public PredicateEvalResult evalPredicate(Expression predicate) {
+	public Expression evalPredicate(Expression predicate) {
 		if (predicate == null) {
-			return new PredicateEvalResult(null, symbEnv, permEnv, refinementPath);
+			return null;
 		}
 		return evalExpression(predicate);
 	}
 
-	private PredicateEvalResult evalExpression(Expression expression) {
+	private Expression evalExpression(Expression expression) {
 		// T-Pred-var / T-Pred-field: first evaluate to 𝜈, then require α > shared.
 		if (expression instanceof Var var) {
 			return evalVar(var);
@@ -68,28 +61,20 @@ public class Evaluator {
 			|| expression instanceof LiteralReal
 			|| expression instanceof LiteralString
 			|| expression instanceof ReturnExpression) {
-			return new PredicateEvalResult(expression, symbEnv, permEnv, refinementPath);
+			return expression;
 		}
-		// T-Pred: recursively validate operands left-to-right and thread Δ; Σ; φ.
+		// T-Pred: recursively validate operands left-to-right, mutating Δ; Σ in place.
 		if (expression instanceof UnaryExpression unaryExpression) {
-			PredicateEvalResult operand = evalExpression(unaryExpression.getExpression());
-			return new PredicateEvalResult(
-				new UnaryExpression(unaryExpression.getOperator(), operand.predicate()),
-				operand.symbEnv(),
-				operand.permEnv(),
-				operand.refinementPath());
+			Expression operand = evalExpression(unaryExpression.getExpression());
+			return new UnaryExpression(unaryExpression.getOperator(), operand);
 		}
 		if (expression instanceof BinaryExpression binaryExpression) {
-			PredicateEvalResult left = evalExpression(binaryExpression.getLeft());
-			PredicateEvalResult right = evalExpression(binaryExpression.getRight());
+			Expression left = evalExpression(binaryExpression.getLeft());
+			Expression right = evalExpression(binaryExpression.getRight());
 			// Milestone 3.1: predicate binary operators pass through after their
 			// operands are evaluated to symbolic form. Milestone 3.4 will add
 			// fresh result equalities for program-expression EvalBinary.
-			return new PredicateEvalResult(
-				new BinaryExpression(left.predicate(), binaryExpression.getOperator(), right.predicate()),
-				right.symbEnv(),
-				right.permEnv(),
-				right.refinementPath());
+			return new BinaryExpression(left, binaryExpression.getOperator(), right);
 		}
 		if (expression instanceof FunctionInvocation invocation) {
 			return evalFunctionInvocation(invocation);
@@ -98,7 +83,7 @@ public class Evaluator {
 		throw new IllegalStateException("Unsupported predicate expression: " + expression.getClass().getSimpleName());
 	}
 
-	private PredicateEvalResult evalVar(Var var) {
+	private Expression evalVar(Var var) {
 		// T-Pred-var premise 1: EvalVar gives Δ(x)=𝜈 and Σ(𝜈) ≠ ⊥.
 		String name = var.getName();
 		SymbolicValue value = symbEnv.get(name);
@@ -113,10 +98,10 @@ public class Evaluator {
 		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
 			throw new IllegalStateException("Predicate requires α > shared but found α=" + perm + " for " + perm + " " + name);
 		}
-		return new PredicateEvalResult(new Var(value.toString()), symbEnv, permEnv, refinementPath);
+		return new Var(value.toString());
 	}
 
-	private PredicateEvalResult evalFieldAccess(FieldAccess fieldAccess) {
+	private Expression evalFieldAccess(FieldAccess fieldAccess) {
 		// T-Pred-field premise 1: evaluate x.f ⇓ 𝜈 through EvalField.
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
@@ -167,27 +152,16 @@ public class Evaluator {
 			throw new IllegalStateException("Predicate requires α > shared but found α=" + fieldPerm + " for " + "field" + " " + receiverName + "." + fieldName);
 		}
 
-		return new PredicateEvalResult(new Var(fieldValue.toString()), symbEnv, permEnv, refinementPath);
+		return new Var(fieldValue.toString());
 	}
 
-	private PredicateEvalResult evalFunctionInvocation(FunctionInvocation invocation) {
+	private Expression evalFunctionInvocation(FunctionInvocation invocation) {
 		List<Expression> newArgs = new ArrayList<>();
 
 		for (Expression arg : invocation.getArguments()) {
-			PredicateEvalResult argResult = evalExpression(arg);
-			newArgs.add(argResult.predicate());
+			newArgs.add(evalExpression(arg));
 		}
 
-		return new PredicateEvalResult(
-			new FunctionInvocation(invocation.getName(), newArgs),
-			symbEnv,
-			permEnv,
-			refinementPath);
+		return new FunctionInvocation(invocation.getName(), newArgs);
 	}
-
-	public static record PredicateEvalResult(
-		Expression predicate,
-		SymbolicEnvironment symbEnv,
-		PermissionEnvironment permEnv,
-		RefinementPath refinementPath){}
 }
