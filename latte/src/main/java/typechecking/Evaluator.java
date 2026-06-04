@@ -96,7 +96,7 @@ public class Evaluator {
 		}
 		// T-Pred-var premises 2-3: Σ ⊢ 𝜈 : α ⊣ Σ′ and α > shared.
 		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-			throw new IllegalStateException("Predicate requires α > shared but found α=" + perm + " for " + perm + " " + name);
+			throw new IllegalStateException("Predicate requires α > shared but found α=" + perm + " for variable " + name);
 		}
 		return new Var(value.toString());
 	}
@@ -149,7 +149,7 @@ public class Evaluator {
 		}
 		// T-Pred-field premises 2-3: Σ ⊢ 𝜈 : α ⊣ Σ′ and α > shared.
 		if (!fieldPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-			throw new IllegalStateException("Predicate requires α > shared but found α=" + fieldPerm + " for " + "field" + " " + receiverName + "." + fieldName);
+			throw new IllegalStateException("Predicate requires α > shared but found α=" + fieldPerm + " for field " + receiverName + "." + fieldName);
 		}
 
 		return new Var(fieldValue.toString());

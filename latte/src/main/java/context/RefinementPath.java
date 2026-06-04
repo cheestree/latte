@@ -7,15 +7,19 @@ import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.LiteralBoolean;
 
-public class RefinementPath {
-    public List<Expression> path;
+public class RefinementPath {     
+    private final List<Expression> path;
 
-    public RefinementPath() {
-        this.path = List.of();
+    public RefinementPath() {         
+        this(List.of());
     }
 
     public RefinementPath(List<Expression> path) {
         this.path = List.copyOf(path);
+    }
+
+    public List<Expression> getPath() {
+        return path;
     }
 
     public Expression toConjunct() {
