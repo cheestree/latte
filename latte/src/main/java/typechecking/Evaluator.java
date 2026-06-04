@@ -101,10 +101,18 @@ public class Evaluator {
 	private PredicateEvalResult evalVar(Var var) {
 		// T-Pred-var premise 1: EvalVar gives Δ(x)=𝜈 and Σ(𝜈) ≠ ⊥.
 		String name = var.getName();
-		SymbolicValue value = requireSymbolicValue(name, symbEnv);
-		UniquenessAnnotation perm = requirePermission(value, permEnv, "variable", name);
+		SymbolicValue value = symbEnv.get(name);
+		if (value == null) {
+			throw new IllegalStateException("Unknown symbolic value for variable " + name);
+		}
+		UniquenessAnnotation perm = permEnv.get(value);
+		if (perm == null) {
+			throw new IllegalStateException("Missing permission for variable " + name);
+		}
 		// T-Pred-var premises 2-3: Σ ⊢ 𝜈 : α ⊣ Σ′ and α > shared.
-		ensurePredicatePermission(perm, "variable", name);
+		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+			throw new IllegalStateException("Predicate requires α > shared but found α=" + perm + " for " + perm + " " + name);
+		}
 		return new PredicateEvalResult(new Var(value.toString()), symbEnv, permEnv, refinementPath);
 	}
 
@@ -116,8 +124,14 @@ public class Evaluator {
 		}
 
 		String receiverName = receiverVar.getName();
-		SymbolicValue receiverValue = requireSymbolicValue(receiverName, symbEnv);
-		UniquenessAnnotation receiverPerm = requirePermission(receiverValue, permEnv, "receiver", receiverName);
+		SymbolicValue receiverValue = symbEnv.get(receiverName);
+		if (receiverValue == null) {
+			throw new IllegalStateException("Unknown symbolic value for variable " + receiverName);
+		}
+		UniquenessAnnotation receiverPerm = permEnv.get(receiverValue);
+		if (receiverPerm == null) {
+			throw new IllegalStateException("Missing permission for receiver " + receiverName);
+		}
 		if (receiverPerm.isBottom()) {
 			throw new IllegalStateException("Receiver is inaccessible in predicate: " + receiverName);
 		}
@@ -144,9 +158,14 @@ public class Evaluator {
 			permEnv.add(fieldValue, fieldPerm);
 		}
 
-		UniquenessAnnotation fieldPerm = requirePermission(fieldValue, permEnv, "field", receiverName + "." + fieldName);
+		UniquenessAnnotation fieldPerm = permEnv.get(fieldValue);
+		if (fieldPerm == null) {
+			throw new IllegalStateException("Missing permission for field " + receiverName + "." + fieldName);
+		}
 		// T-Pred-field premises 2-3: Σ ⊢ 𝜈 : α ⊣ Σ′ and α > shared.
-		ensurePredicatePermission(fieldPerm, "field", receiverName + "." + fieldName);
+		if (!fieldPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+			throw new IllegalStateException("Predicate requires α > shared but found α=" + fieldPerm + " for " + "field" + " " + receiverName + "." + fieldName);
+		}
 
 		return new PredicateEvalResult(new Var(fieldValue.toString()), symbEnv, permEnv, refinementPath);
 	}
@@ -164,32 +183,6 @@ public class Evaluator {
 			symbEnv,
 			permEnv,
 			refinementPath);
-	}
-
-	private SymbolicValue requireSymbolicValue(String name, SymbolicEnvironment symbEnv) {
-		SymbolicValue value = symbEnv.get(name);
-		if (value == null) {
-			throw new IllegalStateException("Unknown symbolic value for variable " + name);
-		}
-		return value;
-	}
-
-	private UniquenessAnnotation requirePermission(
-		SymbolicValue value,
-		PermissionEnvironment permEnv,
-		String kind,
-		String name) {
-		UniquenessAnnotation perm = permEnv.get(value);
-		if (perm == null) {
-			throw new IllegalStateException("Missing permission for " + kind + " " + name);
-		}
-		return perm;
-	}
-
-	private void ensurePredicatePermission(UniquenessAnnotation perm, String kind, String name) {
-		if (!perm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-			throw new IllegalStateException("Predicate requires α > shared but found α=" + perm + " for " + kind + " " + name);
-		}
 	}
 
 	public static record PredicateEvalResult(
