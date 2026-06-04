@@ -21,7 +21,6 @@ import rj_language.ast.LiteralString;
 import rj_language.ast.ReturnExpression;
 import rj_language.ast.UnaryExpression;
 import rj_language.ast.Var;
-import rj_language.smt.SmtSolver;
 import spoon.reflect.reference.CtTypeReference;
 
 public class Evaluator {
@@ -29,11 +28,6 @@ public class Evaluator {
 	private final Map<String, CtTypeReference<?>> typeEnv;
 	private final SymbolicEnvironment symbEnv;
 	private final PermissionEnvironment permEnv;
-	private final SmtSolver smtSolver;
-
-	public Evaluator(ClassLevelMaps maps) {
-		this(maps, Map.of(), null, null);
-	}
 
 	public Evaluator(
 		ClassLevelMaps maps,
@@ -44,7 +38,6 @@ public class Evaluator {
 		this.typeEnv = typeEnv;
 		this.symbEnv = symbEnv;
 		this.permEnv = permEnv;
-		this.smtSolver = new SmtSolver();
 	}
 
 	public Expression evalPredicate(Expression predicate) {

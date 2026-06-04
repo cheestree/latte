@@ -45,8 +45,8 @@ import spoon.support.reflect.code.CtVariableWriteImpl;
 
 public class LatteTypeChecker extends LatteAbstractChecker {
 	private final Deque<ContractContext> contractStack = new ArrayDeque<>();
-    private RefinementPath refinementPath;
-	private SmtSolver solver;
+    private final RefinementPath refinementPath;
+	private final SmtSolver solver;
 
 	public LatteTypeChecker(
 		SymbolicEnvironment symbEnv,
@@ -593,8 +593,13 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			Expression postPredicate = new Evaluator(maps, ctx.typeEnv, symbEnv, permEnv)
 				.evalPredicate(ctx.post);
 			if (this.refinementPath != null && postPredicate != null
+<<<<<<< HEAD
 				&& !eval.entails(this.refinementPath, postPredicate)) {
 				logError("Refinement postcondition not satisfied", returnStatement);
+=======
+				&& !solver.checkEntailment(this.refinementPath.toConjunct(), postPredicate).entailed()) {
+				logError("Refinement postcondition not satisfied for " + ctx.label, returnStatement);
+>>>>>>> 962e682 (Refactored parameters)
 			}
 			*/
 		} 
@@ -937,7 +942,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		CtElement location) {
 		try {
 			enterInvocationActualScope(method, invocation, location);
-			Expression predicate = evaluateInvocationPrecondition(pre, invocation);
+			Expression predicate = new Evaluator(maps, buildInvocationTypeEnv(invocation), symbEnv, permEnv)
+				.evalPredicate(pre);
 			if (predicate == null) {
 				return;
 			}
@@ -973,11 +979,6 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			}
 			symbEnv.addVarSymbolicValue(method.getParameters().get(i).getSimpleName(), argSV);
 		}
-	}
-
-	private Expression evaluateInvocationPrecondition(Expression pre, CtInvocation<?> invocation) {
-		return new Evaluator(maps, buildInvocationTypeEnv(invocation), symbEnv, permEnv)
-			.evalPredicate(pre);
 	}
 
 	private void requireEntailedByCurrentPath(
