@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementContract;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
 import context.Uniqueness;
@@ -28,6 +29,8 @@ import spoon.reflect.visitor.filter.TypeFilter;
 public class EvaluatorTest {
 	private static ClassLevelMaps maps;
 	private static CtTypeReference<?> writerType;
+	private static CtTypeReference<?> readerType;
+	private static Expression connectPrecondition;
 	private SymbolicEnvironment symbEnv;
 	private PermissionEnvironment permEnv;
 
@@ -35,7 +38,7 @@ public class EvaluatorTest {
 	static void loadFieldMetadata() {
 		Launcher launcher = new Launcher();
 		launcher.getEnvironment().setNoClasspath(true);
-		launcher.addInputResource(new File("./src/test/examples/refinements/PipedWriterCorrect.java").getAbsolutePath());
+		launcher.addInputResource(new File("./src/test/examples/refinements/PipedOutputStreamCorrect.java").getAbsolutePath());
 		CtModel model = launcher.buildModel();
 
 		maps = new ClassLevelMaps();
@@ -43,12 +46,25 @@ public class EvaluatorTest {
 			new SymbolicEnvironment(),
 			new PermissionEnvironment(),
 			maps));
+		model.getRootPackage().accept(new RefinementFirstPass(
+			new SymbolicEnvironment(),
+			new PermissionEnvironment(),
+			maps));
 
 		CtClass<?> writerClass = model.getElements(new TypeFilter<>(CtClass.class)).stream()
-			.filter(c -> c.getSimpleName().equals("PipedWriter"))
+			.filter(c -> c.getSimpleName().equals("PipedOutputStream"))
 			.findFirst()
 			.orElseThrow();
 		writerType = writerClass.getReference();
+
+		CtClass<?> readerClass = model.getElements(new TypeFilter<>(CtClass.class)).stream()
+			.filter(c -> c.getSimpleName().equals("PipedInputStream"))
+			.findFirst()
+			.orElseThrow();
+		readerType = readerClass.getReference();
+
+		RefinementContract connectContract = maps.getMethodContract(writerClass, "connect", 1);
+		connectPrecondition = connectContract.getFrom();
 	}
 
 	@BeforeEach
@@ -101,6 +117,32 @@ public class EvaluatorTest {
 		SymbolicValue field = symbEnv.get(x, "isConnected");
 		assertEquals(field.toString(), ExpressionPrettyPrinter.print(result));
 		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(field));
+	}
+
+	@Test
+	void predComplexContractPreconditionUsesFixtureMetadata() {
+		SymbolicValue thisValue = addVariable("this", Uniqueness.BORROWED);
+		SymbolicValue sink = addVariable("sink", Uniqueness.BORROWED);
+		Evaluator evaluator = new Evaluator(
+			maps,
+			Map.of("this", writerType, "sink", readerType),
+			symbEnv,
+			permEnv);
+
+		Expression result = evaluator.evalPredicate(connectPrecondition);
+
+		SymbolicValue thisConnected = symbEnv.get(thisValue, "isConnected");
+		SymbolicValue thisClosed = symbEnv.get(thisValue, "isClosed");
+		SymbolicValue sinkConnected = symbEnv.get(sink, "isConnected");
+		SymbolicValue sinkClosed = symbEnv.get(sink, "isClosed");
+		assertEquals(
+			thisConnected + " == false && " + thisClosed + " == false && "
+				+ sinkConnected + " == false && " + sinkClosed + " == false",
+			ExpressionPrettyPrinter.print(result));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(thisConnected));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(thisClosed));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(sinkConnected));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(sinkClosed));
 	}
 
 	@Test
