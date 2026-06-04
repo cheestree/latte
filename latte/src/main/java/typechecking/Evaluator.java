@@ -122,25 +122,22 @@ public class Evaluator {
 		}
 
 		String fieldName = fieldAccess.getField();
+		CtTypeReference<?> receiverType = typeEnv != null ? typeEnv.get(receiverName) : null;
+		if (receiverType == null) {
+			throw new IllegalStateException("Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
+		}
+		UniquenessAnnotation declaredFieldPerm = maps.getFieldAnnotation(fieldName, receiverType);
+		if (declaredFieldPerm == null) {
+			throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
+		}
+		if (!declaredFieldPerm.isShared() && !receiverPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
+			throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
+		}
+
 		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
 		if (fieldValue == null) {
-			CtTypeReference<?> receiverType = typeEnv != null ? typeEnv.get(receiverName) : null;
-			if (receiverType == null) {
-				throw new IllegalStateException("Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
-			}
-			UniquenessAnnotation fieldPerm = maps.getFieldAnnotation(fieldName, receiverType);
-			if (fieldPerm == null) {
-				throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
-			}
-			if (receiverPerm.isBottom()) {
-				throw new IllegalStateException("Receiver is inaccessible in predicate: " + receiverName);
-			}
-
-			if (!fieldPerm.isShared() && !receiverPerm.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-				throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
-			}
 			fieldValue = symbEnv.addField(receiverValue, fieldName);
-			permEnv.add(fieldValue, fieldPerm);
+			permEnv.add(fieldValue, declaredFieldPerm);
 		}
 
 		UniquenessAnnotation fieldPerm = permEnv.get(fieldValue);
