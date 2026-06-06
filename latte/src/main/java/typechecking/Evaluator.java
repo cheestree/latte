@@ -47,6 +47,11 @@ public class Evaluator {
 		return evalExpression(predicate);
 	}
 
+	/**
+	 * Evaluates a predicate expression according to the rules of T-Pred, returning a new expression where all variables and field accesses have been replaced by their corresponding symbolic values, and all sub-expressions have been recursively evaluated. This method mutates the symbolic and permission environments as needed to track the effects of evaluating the predicate.
+	 * @param expression the predicate expression to evaluate
+	 * @return the evaluated expression, with variables and field accesses replaced by symbolic values
+	 */
 	private Expression evalExpression(Expression expression) {
 		// T-Pred-var / T-Pred-field: first evaluate to 𝜈, then require α > shared.
 		if (expression instanceof Var var) {
