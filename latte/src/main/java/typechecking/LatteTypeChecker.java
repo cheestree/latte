@@ -81,7 +81,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 		if (ctx != null && ctx.expectedParams == 0) {
-			evaluatePreIfNeeded(ctx, c);
+			evaluatePreIfNeeded(ctx);
 		}
 
 		super.visitCtConstructor(c);
@@ -124,7 +124,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 		if (ctx != null && ctx.expectedParams == 0) {
-			evaluatePreIfNeeded(ctx, m);
+			evaluatePreIfNeeded(ctx);
 		}
 
 		super.visitCtMethod(m);
@@ -156,11 +156,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			ctx.typeEnv.put(parameter.getSimpleName(), type);
 			ctx.seenParams++;
 			if (ctx.seenParams == ctx.expectedParams) {
-				CtElement location = parameter.getParent(CtMethod.class);
-				if (location == null) {
-					location = parameter.getParent(CtConstructor.class);
-				}
-				evaluatePreIfNeeded(ctx, location != null ? location : parameter);
+				evaluatePreIfNeeded(ctx);
 			}
 		}
 
@@ -403,7 +399,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 
 		if (assignee instanceof CtVariableWriteImpl<?> varWrite) {
 			if (value instanceof CtInvocation<?> invocation) {
-				handleInvocationAssignment(varWrite, invocation, assignment);
+				handleInvocationAssignment(varWrite, invocation);
 			} else {
 				// CheckVarAssign: use RHS 𝜈 and write Δ[x ↦ 𝜈].
 				SymbolicValue valueSV = (SymbolicValue) value.getMetadata(EVAL_KEY);
@@ -588,14 +584,14 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 
 		ContractContext ctx = contractStack.peek();
 		if (ctx != null && ctx.post != null) {
-			evaluatePreIfNeeded(ctx, returnStatement);
+			evaluatePreIfNeeded(ctx);
 			// T-Method TODO: ρ_post ⇓ ρ_post′ and ⊢SMT ρ_post′[𝜈ᵣ/result].
 			/* 
 			Expression postPredicate = new Evaluator(maps, ctx.typeEnv, symbEnv, permEnv)
 				.evalPredicate(ctx.post);
 			if (this.refinementPath != null && postPredicate != null
 				&& !eval.entails(this.refinementPath, postPredicate)) {
-				logError("Refinement postcondition not satisfied for " + ctx.label, returnStatement);
+				logError("Refinement postcondition not satisfied", returnStatement);
 			}
 			*/
 		} 
@@ -777,10 +773,26 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		logInfo("Joining finished! " + symbEnv + "\n " + permEnv);
 	}
 
+	/**
+	 * Handles the assignment-specific part of y = x.m(ē) after visitCtInvocation
+	 * has evaluated the call arguments and allocated the return symbolic value.
+	 * The method performs the following steps:
+	 * 1. CheckCall-V2 assignment form: y = x.m(ē).
+	 * 2. CheckCall-V2 ①: method(Γ(x), f) lookup by the receiver target type.
+	 * 3. CheckCall-V2 ⑥: retrieve 𝜈_ret from the invocation metadata.
+	 * 4. Ensure 𝜈_ret has a return permission, falling back to shared if absent.
+	 * 5. CheckPre ④, partial: formal-to-actual substitution is TODO; phase 3.1
+	 *    validates and assumes ρ_pre under the current Γ; Δ; Σ.
+	 * 6. UpdatePerms ⑥, partial: actuals whose current permission is unique become ⊥.
+	 * 7. CheckVarAssign/UpdatePerms ⑥: Δ[y ↦ 𝜈_ret]; simplification is handled
+	 *    by visitCtAssignment.
+	 *
+	 * @param assignee the variable written by the assignment
+	 * @param invocation the invocation on the right-hand side
+	 */
 	private void handleInvocationAssignment(
 		CtVariableWriteImpl<?> assignee,
-		CtInvocation<?> invocation,
-		CtAssignment<?, ?> assignment) {
+		CtInvocation<?> invocation) {
 		// CheckCall-V2 assignment form: y = x.m(ē).
 		String methodName = invocation.getExecutable().getSimpleName();
 		if (methodName.equals("<init>")) {
@@ -798,10 +810,10 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		// CheckCall-V2 ⑥: retrieve 𝜈_ret allocated by visitCtInvocation.
 		SymbolicValue returnSV = (SymbolicValue) invocation.getMetadata(EVAL_KEY);
 		if (returnSV == null) {
-			logError("Symbolic value for invocation return not found", assignment);
+			logError("Symbolic value for invocation return not found", invocation);
 		}
 
-		// PrepareTarget ③ / UpdatePerms ⑥: fresh target 𝜈′ carrying α_ret.
+		// CheckCall-V2 ⑥: ensure the return value has a permission entry.
 		UniquenessAnnotation returnPerm = permEnv.get(returnSV);
 		if (returnPerm == null) {
 			returnPerm = new UniquenessAnnotation(Uniqueness.SHARED);
@@ -810,12 +822,16 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 
 		RefinementContract contract = maps.getMethodContract(klass, methodName, invocation.getArguments().size());
 		if (contract != null && contract.getFrom() != null) {
-			// CheckPre ④, partial: substituting call-site names is TODO;
+			// CheckPre ④, partial: formal-to-actual substitution is TODO;
 			// phase 3.1 validates and assumes ρ_pre under current Γ; Δ; Σ.
-			evaluateAndAssumePre(contract.getFrom(), buildInvocationTypeEnv(invocation), assignment, "");
+			try {
+				evaluateAndAssumePre(contract.getFrom(), buildInvocationTypeEnv(invocation));
+			} catch (IllegalStateException ex) {
+				logError("Refinement precondition failed: " + ex.getMessage(), invocation);
+			}
 		}
 
-		// UpdatePerms ⑥: unique actuals become ⊥ after ownership transfer.
+		// UpdatePerms ⑥, partial: actuals whose current permission is unique become ⊥.
 		for (CtExpression<?> arg : invocation.getArguments()) {
 			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
 			if (argSV == null) {
@@ -831,6 +847,13 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		symbEnv.addVarSymbolicValue(assignee.getVariable().getSimpleName(), returnSV);
 	}
 
+	/**
+	 * Begins a method-body contract context for the given method.
+	 * The type environment starts with `this` mapped to the declaring class; formal
+	 * parameters are added later as visitCtParameter sees them.
+	 * @param method the method for which to begin the contract
+	 * @return the contract context or null if no contract is found
+	 */
 	private ContractContext beginMethodContract(CtMethod<?> method) {
 		CtClass<?> klass = method.getParent(CtClass.class);
 		if (klass == null) {
@@ -840,7 +863,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		if (contract == null || (contract.getFrom() == null && contract.getTo() == null)) {
 			return null;
 		}
-		ContractContext ctx = new ContractContext(contract.getFrom(), contract.getTo(), method.getParameters().size(), "method " + method.getSimpleName());
+		ContractContext ctx = new ContractContext(contract.getFrom(), contract.getTo(), method.getParameters().size());
+		ctx.location = method;
 		CtType<?> declaringType = method.getDeclaringType();
 		CtTypeReference<?> declaringTypeRef = declaringType == null ? null : declaringType.getReference();
 		if (declaringTypeRef != null) {
@@ -849,6 +873,13 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		return ctx;
 	}
 
+	/**
+	 * Begins a constructor-body contract context for the given constructor.
+	 * The type environment starts with `this` mapped to the declaring class; formal
+	 * parameters are added later as visitCtParameter sees them.
+	 * @param constructor the constructor for which to begin the contract
+	 * @return the contract context or null if no contract is found
+	 */
 	private ContractContext beginConstructorContract(CtConstructor<?> constructor) {
 		CtClass<?> klass = constructor.getParent(CtClass.class);
 		if (klass == null) {
@@ -858,7 +889,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		if (contract == null || (contract.getFrom() == null && contract.getTo() == null)) {
 			return null;
 		}
-		ContractContext ctx = new ContractContext(contract.getFrom(), contract.getTo(), constructor.getParameters().size(), "constructor " + constructor.getSimpleName());
+		ContractContext ctx = new ContractContext(contract.getFrom(), contract.getTo(), constructor.getParameters().size());
+		ctx.location = constructor;
 		CtTypeReference<?> declaringType = klass.getReference();
 		if (declaringType != null) {
 			ctx.typeEnv.put(THIS, declaringType);
@@ -866,7 +898,7 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		return ctx;
 	}
 
-	private void evaluatePreIfNeeded(ContractContext ctx, CtElement location) {
+	private void evaluatePreIfNeeded(ContractContext ctx) {
 		if (ctx.preEvaluated) {
 			return;
 		}
@@ -874,24 +906,22 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		if (ctx.pre == null) {
 			return;
 		}
-		evaluateAndAssumePre(ctx.pre, ctx.typeEnv, location, " for " + ctx.label);
+		try {
+			evaluateAndAssumePre(ctx.pre, ctx.typeEnv);
+		} catch (IllegalStateException ex) {
+			logError("Refinement precondition failed: " + ex.getMessage(), ctx.location);
+		}
 	}
 
 	private void evaluateAndAssumePre(
 		Expression pre,
-		Map<String, CtTypeReference<?>> typeEnv,
-		CtElement location,
-		String label) {
-		try {
-			// T-Method/CheckPre: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′.
-			Expression prePredicate = new Evaluator(maps, typeEnv, symbEnv, permEnv)
-				.evalPredicate(pre);
-			// T-Method/CheckPre: continue under 𝜑 ∧ ρ_pre′.
-			if (prePredicate != null) {
-				this.refinementPath.addExpression(prePredicate);
-			}
-		} catch (IllegalStateException ex) {
-			logError("Refinement precondition failed" + label + ": " + ex.getMessage(), location);
+		Map<String, CtTypeReference<?>> typeEnv) {
+		// T-Method/CheckPre: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′.
+		Expression prePredicate = new Evaluator(maps, typeEnv, symbEnv, permEnv)
+			.evalPredicate(pre);
+		// T-Method/CheckPre: continue under 𝜑 ∧ ρ_pre′.
+		if (prePredicate != null) {
+			this.refinementPath.addExpression(prePredicate);
 		}
 	}
 
@@ -901,6 +931,15 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		}
 	}
 
+	/**
+	 * Builds the type environment used when evaluating an invocation precondition.
+	 * The environment maps `this` to the receiver target type and formal parameter
+	 * names to their declared types. It does not bind formal names to actual
+	 * symbolic values; Evaluator still resolves predicate variables through the
+	 * current symbolic environment. Generic substitutions are not handled here.
+	 * @param invocation the method invocation for which to build the type environment
+	 * @return the type environment mapping names to types for call-site contract evaluation
+	 */
 	private Map<String, CtTypeReference<?>> buildInvocationTypeEnv(CtInvocation<?> invocation) {
 		Map<String, CtTypeReference<?>> typeEnv = new HashMap<>();
 		if (invocation.getTarget() != null && invocation.getTarget().getType() != null) {
@@ -922,16 +961,15 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		private final Expression pre;
 		private final Expression post;
 		private final int expectedParams;
-		private final String label;
 		private final Map<String, CtTypeReference<?>> typeEnv = new HashMap<>();
+		private CtElement location;
 		private int seenParams = 0;
 		private boolean preEvaluated = false;
 
-		private ContractContext(Expression pre, Expression post, int expectedParams, String label) {
+		private ContractContext(Expression pre, Expression post, int expectedParams) {
 			this.pre = pre;
 			this.post = post;
 			this.expectedParams = expectedParams;
-			this.label = label;
 		}
 	}
 }
