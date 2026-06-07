@@ -593,13 +593,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			Expression postPredicate = new Evaluator(maps, ctx.typeEnv, symbEnv, permEnv)
 				.evalPredicate(ctx.post);
 			if (this.refinementPath != null && postPredicate != null
-<<<<<<< HEAD
-				&& !eval.entails(this.refinementPath, postPredicate)) {
-				logError("Refinement postcondition not satisfied", returnStatement);
-=======
 				&& !solver.checkEntailment(this.refinementPath.toConjunct(), postPredicate).entailed()) {
 				logError("Refinement postcondition not satisfied for " + ctx.label, returnStatement);
->>>>>>> 962e682 (Refactored parameters)
 			}
 			*/
 		} 
