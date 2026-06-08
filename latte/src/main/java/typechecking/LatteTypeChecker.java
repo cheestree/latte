@@ -242,9 +242,10 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 	 * ⑥ update(y, α_ret, 𝜈₁...𝜈ₙ, α₁...αₙ) ⊣ Δ₅; Σ₅; 𝜈_ret
 	 * ⑦ post(ρ_post, z, ē, x̄, 𝜈_ret) ⊣ Δ₆; Σ₆; 𝜑₃
 	 *
-	 * This visitor implements ①, ②, and the fresh return part of ⑥ for all
-	 * invocations. Assigned calls defer ④-⑥ to handleInvocationAssignment so
-	 * CheckPre happens before havoc. ③ prepare(y) and ⑦ AssumePost are TODO.
+	 * This visitor is the statement-call/local-expression variant. For the
+	 * assigned-call shape y = x.m(ē), this visitor only evaluates child
+	 * expressions; handleInvocationAssignment implements CheckCall-V2 in order.
+	 * Assigned-call ⑦ AssumePost and statement-call CheckPre/Post are TODO.
 	 */
 	@Override
 	public <T> void visitCtInvocation(CtInvocation<T> invocation) {
@@ -261,6 +262,12 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			logError("Invocation needs to have a target but found none -", invocation);
 		}
 
+		if (invocation.getParent() instanceof CtAssignment<?, ?> assignment
+			&& assignment.getAssignment() == invocation
+			&& assignment.getAssigned() instanceof CtVariableWriteImpl<?>) {
+			return;
+		}
+
 		// CheckCall-V2 ①: method(Γ(x), f) lookup.
 		CtTypeReference<?> receiverType = invocation.getTarget().getType().getTypeErasure();
 		CtClass<?> klass = maps.getClassFrom(receiverType);
@@ -270,7 +277,16 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			return;
 		}
 		// EvalArgs premise 1 / CheckCall-V2 ②: receiver x ⇓ 𝜈₀.
-		SymbolicValue receiverSV = getInvocationReceiverSymbolicValue(invocation);
+		CtExpression<?> target = invocation.getTarget();
+		SymbolicValue receiverSV = (SymbolicValue) target.getMetadata(EVAL_KEY);
+		if (receiverSV == null && target instanceof CtThisAccessImpl) {
+			receiverSV = symbEnv.get(THIS);
+		} else if (receiverSV == null && target instanceof CtVariableReadImpl<?> variableRead) {
+			receiverSV = symbEnv.get(variableRead.getVariable().getSimpleName());
+		}
+		if (receiverSV != null) {
+			target.putMetadata(EVAL_KEY, receiverSV);
+		}
 		if (receiverSV == null) {
 			logError("Symbolic value for invocation target not found", invocation);
 		}
@@ -287,7 +303,8 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
 			UniquenessAnnotation actualUA = permEnv.get(argSV);
 
-			// EvalArgs premise 2: Σ₁ ⊢ 𝜈ᵢ : αᵢ ⊣ Σ₂.
+			// CheckCall-V2 ② / EvalArgs premise 2:
+			// Σ₁ ⊢ 𝜈ᵢ : αᵢ ⊣ Σ₂.
 			logInfo(String.format("Checking invocation argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA));
 			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
 				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
@@ -302,12 +319,13 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 				distinctArgs.add(argSV);
 			}
 		}
-		// EvalArgs premise 3: distinct(Δ₁, { 𝜈ᵢ : borrowed ≤ αᵢ }).
+		// CheckCall-V2 ② / EvalArgs premise 3:
+		// distinct(Δ₁, { 𝜈ᵢ : borrowed ≤ αᵢ }).
 		if (!symbEnv.distinct(distinctArgs)){
 			logError(String.format("Non-distinct parameters in method call of %s", klass.getSimpleName()), invocation);
 		}
 
-		// UpdatePerms / CheckCall-V2 ⑥, implemented early:
+		// Statement-call/local-expression variant of CheckCall-V2 ⑥ / UpdatePerms:
 		// fresh 𝜈_ret; Σ'' = Σ'[𝜈_ret ↦ α_ret].
 		UniquenessAnnotation returnUA = new UniquenessAnnotation(method);
 		SymbolicValue returnSV = symbEnv.addVariable(invocation.toString());
@@ -315,13 +333,26 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 		invocation.putMetadata(EVAL_KEY, returnSV);
 		logInfo(String.format("Invocation %s:%s, %s:%s", invocation.toString(), returnSV, returnSV, returnUA));
 
-		if (!(invocation.getParent() instanceof CtAssignment<?, ?> assignment
-			&& assignment.getAssignment() == invocation)) {
-			// Statement-call variant: no y target, so apply CheckCall-V2 ⑤ and
-			// the argument-permission part of ⑥ here. Assigned calls defer this
-			// so their CheckCall-V2 ④ CheckPre happens before ⑤ havoc.
-			havocInvocationReachableFields(invocation, argValues);
-			updateInvocationArgumentPermissions(method, argValues);
+		// Statement-call/local-expression variant of CheckCall-V2 ⑤:
+		// havoc(𝜈₀, 𝜈₁, ..., 𝜈ₙ) ⊣ Δ₄; Σ₄; O.
+		List<SymbolicValue> reachableRoots = new ArrayList<>();
+		reachableRoots.add(receiverSV);
+		reachableRoots.addAll(argValues);
+		int havocedFields = symbEnv.havocFieldsReachableFrom(reachableRoots, permEnv);
+		logInfo(String.format("Havoced %d fields reachable from invocation %s", havocedFields, invocation.toString()));
+
+		// Statement-call/local-expression variant of CheckCall-V2 ⑥ / UpdatePerms:
+		// Σ' = Σ[𝜈ᵢ ↦ if αᵢ = unique then ⊥ else αᵢ].
+		for (int i = 0; i < argValues.size(); i++) {
+			SymbolicValue argSV = argValues.get(i);
+			UniquenessAnnotation expected = new UniquenessAnnotation(method.getParameters().get(i));
+			if (!expected.isUnique()) {
+				continue;
+			}
+			UniquenessAnnotation perm = permEnv.get(argSV);
+			if (perm != null && perm.isUnique()) {
+				permEnv.add(argSV, new UniquenessAnnotation(Uniqueness.BOTTOM));
+			}
 		}
 	}
 
@@ -811,14 +842,15 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 	 *
 	 * Γ; Δ; Σ; 𝜑 ⊢ y = x.m(ē); ⊣ Γ; Δ₆; Σ₆; 𝜑₃
 	 *
-	 * visitCtInvocation has already implemented ① method lookup, ② EvalArgs,
-	 * and the fresh 𝜈_ret part of ⑥. This method completes:
-	 *
+	 * ① method(Γ(x), f) lookup
+	 * ② args(x, e₁, ..., eₙ : α₀, ..., αₙ) ⊣ 𝜈₀, ..., 𝜈ₙ; Δ₁; Σ₁; 𝜑₁
+	 * ③ prepare(y) ⊣ Δ₂; Σ₂
 	 * ④ pre(ρ_pre, z, ē, x̄) ⊣ Δ₃; Σ₃; 𝜑₂
 	 * ⑤ havoc(𝜈₀, 𝜈₁, ..., 𝜈ₙ) ⊣ Δ₄; Σ₄; O
 	 * ⑥ update(y, α_ret, 𝜈₁...𝜈ₙ, α₁...αₙ) ⊣ Δ₅; Σ₅; 𝜈_ret
+	 * ⑦ post(ρ_post, z, ē, x̄, 𝜈_ret) ⊣ Δ₆; Σ₆; 𝜑₃
 	 *
-	 * TODO: ③ prepare(y) and ⑦ AssumePost.
+	 * TODO: ⑦ AssumePost.
 	 *
 	 * @param assignee the variable written by the assignment
 	 * @param invocation the invocation on the right-hand side
@@ -840,18 +872,73 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			return;
 		}
 
-		// CheckCall-V2 ⑥: retrieve 𝜈_ret allocated by visitCtInvocation.
-		SymbolicValue returnSV = (SymbolicValue) invocation.getMetadata(EVAL_KEY);
-		if (returnSV == null) {
-			logError("Symbolic value for invocation return not found", invocation);
+		// CheckCall-V2 ② / EvalArgs premise 1: receiver x ⇓ 𝜈₀.
+		CtExpression<?> target = invocation.getTarget();
+		SymbolicValue receiverSV = (SymbolicValue) target.getMetadata(EVAL_KEY);
+		if (receiverSV == null && target instanceof CtThisAccessImpl) {
+			receiverSV = symbEnv.get(THIS);
+		} else if (receiverSV == null && target instanceof CtVariableReadImpl<?> variableRead) {
+			receiverSV = symbEnv.get(variableRead.getVariable().getSimpleName());
+		}
+		if (receiverSV != null) {
+			target.putMetadata(EVAL_KEY, receiverSV);
+		}
+		if (receiverSV == null) {
+			logError("Symbolic value for invocation target not found", invocation);
 		}
 
-		// CheckCall-V2 ⑥: ensure the return value has a permission entry.
-		UniquenessAnnotation returnPerm = permEnv.get(returnSV);
-		if (returnPerm == null) {
-			returnPerm = new UniquenessAnnotation(Uniqueness.SHARED);
-    		permEnv.add(returnSV, returnPerm);
+		List<SymbolicValue> argValues = new ArrayList<>();
+		for (int i = 0; i < invocation.getArguments().size(); i++) {
+			CtExpression<?> arg = invocation.getArguments().get(i);
+			// CheckCall-V2 ② / EvalArgs premise 1: eᵢ ⇓ 𝜈ᵢ.
+			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
+			if (argSV == null) {
+				logError("Symbolic value for invocation argument not found", invocation);
+			}
+			CtParameter<?> parameter = method.getParameters().get(i);
+			UniquenessAnnotation expectedUA = new UniquenessAnnotation(parameter);
+			UniquenessAnnotation actualUA = permEnv.get(argSV);
+
+			// CheckCall-V2 ② / EvalArgs premise 2:
+			// Σ₁ ⊢ 𝜈ᵢ : αᵢ ⊣ Σ₂.
+			logInfo(String.format("Checking invocation argument %s:%s, %s <= %s", parameter.getSimpleName(), argSV, actualUA, expectedUA));
+			if (!permEnv.usePermissionAs(argSV, actualUA, expectedUA)) {
+				logError(String.format("Expected %s but got %s", expectedUA, actualUA), arg);
+			}
+			argValues.add(argSV);
 		}
+
+		List<SymbolicValue> distinctArgs = new ArrayList<>();
+		for (SymbolicValue argSV : argValues) {
+			UniquenessAnnotation ua = permEnv.get(argSV);
+			if (ua != null && ua.isGreaterEqualThan(Uniqueness.BORROWED)) {
+				distinctArgs.add(argSV);
+			}
+		}
+		// CheckCall-V2 ② / EvalArgs premise 3:
+		// distinct(Δ₁, { 𝜈ᵢ : borrowed ≤ αᵢ }).
+		if (!symbEnv.distinct(distinctArgs)){
+			logError(String.format("Non-distinct parameters in method call of %s", klass.getSimpleName()), invocation);
+		}
+
+		// CheckCall-V2 ③ / PrepareTarget:
+		// Δ₁; Σ₁ ⊢ prepare(y) ⊣ Δ₂; Σ₂.
+		// Σ₁ ⊢ Δ₁(y) : α_y ⊣ Σ_y; fresh 𝜈_y; Δ₂ = Δ₁[y ↦ 𝜈_y];
+		// Σ₂ = Σ_y[𝜈_y ↦ α_y], followed by simplification.
+		String assigneeName = assignee.getVariable().getSimpleName();
+		SymbolicValue oldAssigneeSV = symbEnv.get(assigneeName);
+		if (oldAssigneeSV == null) {
+			logError("Symbolic value for assignment target not found", assignee);
+		}
+		UniquenessAnnotation assigneeUA = permEnv.get(oldAssigneeSV);
+		if (assigneeUA == null) {
+			logError("Permission for assignment target not found", assignee);
+		}
+		SymbolicValue preparedAssigneeSV = symbEnv.getFresh();
+		symbEnv.addVarSymbolicValue(assigneeName, preparedAssigneeSV);
+		permEnv.add(preparedAssigneeSV, assigneeUA);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
+		logInfo(String.format("Prepared assignment target %s:%s, %s:%s", assigneeName, preparedAssigneeSV, preparedAssigneeSV, assigneeUA));
 
 		RefinementContract contract = maps.getMethodContract(klass, methodName, invocation.getArguments().size());
 		if (contract != null && contract.getFrom() != null) {
@@ -861,54 +948,15 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 			checkInvocationPrecondition(contract.getFrom(), method, invocation, invocation);
 		}
 
-		List<SymbolicValue> argValues = getInvocationArgumentValues(invocation);
 		// CheckCall-V2 ⑤: havoc(𝜈₀, 𝜈₁, ..., 𝜈ₙ) ⊣ Δ₄; Σ₄; O.
-		havocInvocationReachableFields(invocation, argValues);
-		// CheckCall-V2 ⑥ / UpdatePerms: unique actuals become ⊥.
-		updateInvocationArgumentPermissions(method, argValues);
-
-		// CheckCall-V2 ⑥ / UpdatePerms: Δ' = Δ[y ↦ 𝜈_ret].
-		// The fresh 𝜈_ret and Σ[𝜈_ret ↦ α_ret] were created in visitCtInvocation.
-		symbEnv.addVarSymbolicValue(assignee.getVariable().getSimpleName(), returnSV);
-	}
-
-	private List<SymbolicValue> getInvocationArgumentValues(CtInvocation<?> invocation) {
-		List<SymbolicValue> argValues = new ArrayList<>();
-		for (CtExpression<?> arg : invocation.getArguments()) {
-			SymbolicValue argSV = (SymbolicValue) arg.getMetadata(EVAL_KEY);
-			if (argSV != null) {
-				argValues.add(argSV);
-			}
-		}
-		return argValues;
-	}
-
-	private void havocInvocationReachableFields(
-		CtInvocation<?> invocation,
-		List<SymbolicValue> argValues) {
-		// Havoc rule:
-		// Δ; Σ ⊢ calleeReachable(𝜈₀, ..., 𝜈ₙ) = R
-		// Δ ⊢ fieldsToHavoc(R) = F
-		// Δ; Σ ⊢ havocFields(F) ⊣ Δ'; Σ'; O
-		// ------------------------------------------------
-		// Δ; Σ ⊢ havoc(𝜈₀, ..., 𝜈ₙ) ⊣ Δ'; Σ'; O
-		SymbolicValue receiverSV = getInvocationReceiverSymbolicValue(invocation);
-		if (receiverSV == null) {
-			return;
-		}
 		List<SymbolicValue> reachableRoots = new ArrayList<>();
-		// 𝜈₀ is the receiver; 𝜈₁...𝜈ₙ are the argument symbolic values.
 		reachableRoots.add(receiverSV);
 		reachableRoots.addAll(argValues);
 		int havocedFields = symbEnv.havocFieldsReachableFrom(reachableRoots, permEnv);
 		logInfo(String.format("Havoced %d fields reachable from invocation %s", havocedFields, invocation.toString()));
-	}
 
-	private void updateInvocationArgumentPermissions(CtMethod<?> method, List<SymbolicValue> argValues) {
-		// UpdatePerms:
+		// CheckCall-V2 ⑥ / UpdatePerms:
 		// Σ' = Σ[𝜈ᵢ ↦ if αᵢ = unique then ⊥ else αᵢ].
-		// This implementation only mutates actuals whose formal αᵢ is @Unique;
-		// borrowed/shared/immutable actuals keep their current caller permission.
 		for (int i = 0; i < argValues.size(); i++) {
 			SymbolicValue argSV = argValues.get(i);
 			UniquenessAnnotation expected = new UniquenessAnnotation(method.getParameters().get(i));
@@ -920,27 +968,19 @@ public class LatteTypeChecker extends LatteAbstractChecker {
 				permEnv.add(argSV, new UniquenessAnnotation(Uniqueness.BOTTOM));
 			}
 		}
-	}
 
-	private SymbolicValue getInvocationReceiverSymbolicValue(CtInvocation<?> invocation) {
-		// EvalArgs / CheckCall-V2 ②: x ⇓ 𝜈₀.
-		CtExpression<?> target = invocation.getTarget();
-		if (target == null) {
-			return null;
-		}
-		SymbolicValue receiverSV = (SymbolicValue) target.getMetadata(EVAL_KEY);
-		if (receiverSV != null) {
-			return receiverSV;
-		}
-		if (target instanceof CtThisAccessImpl) {
-			receiverSV = symbEnv.get(THIS);
-		} else if (target instanceof CtVariableReadImpl<?> variableRead) {
-			receiverSV = symbEnv.get(variableRead.getVariable().getSimpleName());
-		}
-		if (receiverSV != null) {
-			target.putMetadata(EVAL_KEY, receiverSV);
-		}
-		return receiverSV;
+		// CheckCall-V2 ⑥ / UpdatePerms:
+		// fresh 𝜈_ret; Δ' = Δ[y ↦ 𝜈_ret]; Σ'' = Σ'[𝜈_ret ↦ α_ret].
+		UniquenessAnnotation returnUA = new UniquenessAnnotation(method);
+		SymbolicValue returnSV = symbEnv.addVariable(invocation.toString());
+		permEnv.add(returnSV, returnUA);
+		invocation.putMetadata(EVAL_KEY, returnSV);
+		logInfo(String.format("Invocation %s:%s, %s:%s", invocation.toString(), returnSV, returnSV, returnUA));
+
+		symbEnv.addVarSymbolicValue(assigneeName, returnSV);
+
+		// CheckCall-V2 ⑦ / AssumePost:
+		// TODO: evaluate postcondition using O and add it to φ.
 	}
 
 	/**
