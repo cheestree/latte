@@ -1,7 +1,9 @@
 package context;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,8 @@ import org.javatuples.Pair;
  * Δ ::= ∅ | 𝑥: 𝜈, Δ | 𝜈.𝑓 : 𝜈, Δ
  */
 public class SymbolicEnvironment {
+
+	public static record ReachableField(SymbolicValue receiver, String field, SymbolicValue value) {}
 
 	int symbolic_counter = 0;
 
@@ -263,9 +267,87 @@ public class SymbolicEnvironment {
 				.collect(Collectors.toList());
 
 		for (SymbolicValue v : reachableFromField) {
-			return ( false || canReach(v, v2, visited)); 
+			if (canReach(v, v2, visited)) {
+				return true;
+			}
 		}
 		return false;
+	}
+
+	/**
+	 * Havoc helper
+	 *
+	 * CalleeReachable:
+	 * V = { 𝜈₀, ..., 𝜈ₙ }
+	 * S = shared(Σ)
+	 * R = { v | Δ ⊢ (V ∪ S) ↝ v }
+	 *
+	 * CollectFields:
+	 * F = { (𝜈, f) | 𝜈 ∈ R ∧ 𝜈.f ∈ dom(Δ) }
+	 *
+	 * This milestone passes V as roots and collects fields reachable from V.
+	 * Extending roots with S = shared(Σ) is still TODO.
+	 */
+	public List<ReachableField> collectFieldsReachableFrom(Collection<SymbolicValue> roots) {
+		Set<ReachableField> fields = new LinkedHashSet<>();
+		List<SymbolicValue> visited = new ArrayList<>();
+		for (SymbolicValue root : roots) {
+			collectFieldsReachableFrom(root, visited, fields);
+		}
+		return new ArrayList<>(fields);
+	}
+
+	/**
+	 * Havoc
+	 *
+	 * Δ; Σ ⊢ calleeReachable(𝜈₀, ..., 𝜈ₙ) = R
+	 * Δ ⊢ fieldsToHavoc(R) = F
+	 * Δ; Σ ⊢ havocFields(F) ⊣ Δ'; Σ'; O
+	 * ------------------------------------------------
+	 * Δ; Σ ⊢ havoc(𝜈₀, ..., 𝜈ₙ) ⊣ Δ'; Σ'; O
+	 *
+	 * Current implementation updates Δ and Σ, but does not yet return O for old(...)
+	 * postcondition references.
+	 */
+	public int havocFieldsReachableFrom(Collection<SymbolicValue> roots, PermissionEnvironment permEnv) {
+		List<ReachableField> fields = collectFieldsReachableFrom(roots);
+		for (ReachableField field : fields) {
+			// HavocStep:
+			// Δ(𝜈.f) = 𝜈_old; Σ(𝜈_old) = α_f; fresh 𝜈'
+			// Δ[𝜈.f ↦ 𝜈']; Σ[𝜈' ↦ α_f]
+			UniquenessAnnotation oldPermission = permEnv.get(field.value());
+			SymbolicValue freshValue = getFresh();
+			addFieldSymbolicValue(field.receiver(), field.field(), freshValue);
+			permEnv.add(freshValue, oldPermission == null
+				? new UniquenessAnnotation(Uniqueness.BOTTOM)
+				: oldPermission);
+		}
+		return fields.size();
+	}
+
+	private void collectFieldsReachableFrom(
+		SymbolicValue root,
+		List<SymbolicValue> visited,
+		Set<ReachableField> fields) {
+		if (root == null || visited.contains(root)) {
+			return;
+		}
+		visited.add(root);
+
+		List<ReachableField> directFields = symbEnv.stream()
+			.flatMap(innerMap -> innerMap.entrySet().stream())
+			.filter(entry -> entry.getKey() instanceof FieldHeapLoc
+				&& ((FieldHeapLoc) entry.getKey()).heapLoc.equals(root))
+			.map(entry -> {
+				FieldHeapLoc field = (FieldHeapLoc) entry.getKey();
+				return new ReachableField(root, field.field.name, entry.getValue());
+			})
+			.collect(Collectors.toList());
+
+		fields.addAll(directFields);
+		for (ReachableField field : directFields) {
+			collectFieldsReachableFrom(field.value(), visited, fields);
+		}
 	}
 
 	/**
@@ -318,5 +400,3 @@ public class SymbolicEnvironment {
 
 
   }
-
-

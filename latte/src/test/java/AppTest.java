@@ -1,8 +1,11 @@
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
@@ -12,8 +15,12 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import api.App;
+import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
+import context.SymbolicEnvironment.ReachableField;
 import context.SymbolicValue;
+import context.Uniqueness;
+import context.UniquenessAnnotation;
 import typechecking.LatteException;
 
 public class AppTest {
@@ -164,5 +171,43 @@ public class AppTest {
         boolean b2 = se.canReach(v1, v4, new ArrayList<>());
         logger.info(v1.toString() + " can reach " + v4.toString() + "? " + b2);
         assertTrue(b2);
+    }
+
+    @Test
+    public void testReachabilityChecksAllOutgoingFields() {
+        SymbolicEnvironment se = new SymbolicEnvironment();
+        se.enterScope();
+
+        SymbolicValue root = se.addVariable("root");
+        se.addField(root, "left");
+        SymbolicValue right = se.addField(root, "right");
+        SymbolicValue target = se.addField(right, "next");
+
+        assertTrue(se.canReach(root, target, new ArrayList<>()));
+    }
+
+    @Test
+    public void testCollectAndHavocReachableFields() {
+        SymbolicEnvironment se = new SymbolicEnvironment();
+        PermissionEnvironment pe = new PermissionEnvironment();
+        se.enterScope();
+        pe.enterScope();
+
+        SymbolicValue root = se.addVariable("root");
+        SymbolicValue first = se.addField(root, "first");
+        SymbolicValue second = se.addField(first, "second");
+        SymbolicValue unrelatedRoot = se.addVariable("unrelated");
+        se.addField(unrelatedRoot, "field");
+        pe.add(first, new UniquenessAnnotation(Uniqueness.UNIQUE));
+        pe.add(second, new UniquenessAnnotation(Uniqueness.SHARED));
+
+        List<ReachableField> fields = se.collectFieldsReachableFrom(List.of(root));
+        assertEquals(2, fields.size());
+
+        int havoced = se.havocFieldsReachableFrom(List.of(root), pe);
+        assertEquals(2, havoced);
+        assertNotEquals(first, se.get(root, "first"));
+        assertNotEquals(second, se.get(first, "second"));
+        assertEquals(new UniquenessAnnotation(Uniqueness.UNIQUE), pe.get(se.get(root, "first")));
     }
 }
