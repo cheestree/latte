@@ -3,6 +3,7 @@ package typechecking;
 import java.io.File;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -73,6 +74,19 @@ public class EvaluatorTest {
 		permEnv = new PermissionEnvironment();
 		symbEnv.enterScope();
 		permEnv.enterScope();
+	}
+
+	@AfterEach
+	void tearDownEnvironment() {
+		permEnv.exitScope();
+		symbEnv.exitScope();
+	}
+
+	@Test
+	void evalPredicateReturnsNullForNullPredicate() {
+		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
+		Expression result = evaluator.evalPredicate(null);
+		assertEquals(null, result);
 	}
 
 	@Test
@@ -149,7 +163,8 @@ public class EvaluatorTest {
 	void predVarRejectsUnknownVariable() {
 		Evaluator missingEvaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
-		assertThrows(IllegalStateException.class, () -> missingEvaluator.evalPredicate(RefinementsParser.createAST("missing")));
+		Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.evalPredicate(RefinementsParser.createAST("missing")));
+		assertEquals("Unknown symbolic value for variable missing", ex.getMessage());
 	}
 
 	@Test
@@ -157,7 +172,8 @@ public class EvaluatorTest {
 		addVariable("x", Uniqueness.SHARED);
 		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
-		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x")));
+		Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x")));
+		assertEquals("Predicate requires α > shared but found α=SHARED for variable x", ex.getMessage());
 	}
 
 	@Test
@@ -165,7 +181,8 @@ public class EvaluatorTest {
 		addVariable("x", Uniqueness.BOTTOM);
 		Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv);
 
-		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x")));
+		Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x")));
+		assertEquals("Predicate requires α > shared but found α=BOTTOM for variable x", ex.getMessage());
 	}
 
 	@Test
@@ -173,7 +190,8 @@ public class EvaluatorTest {
 		addVariable("x", Uniqueness.SHARED);
 		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv);
 
-		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+		Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+		assertEquals("Receiver x with permission SHARED cannot access non-shared field isConnected", ex.getMessage());
 	}
 
 	@Test
@@ -184,7 +202,8 @@ public class EvaluatorTest {
 		permEnv.add(x, new UniquenessAnnotation(Uniqueness.SHARED));
 		Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv);
 
-		assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+		Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+		assertEquals("Receiver x with permission SHARED cannot access non-shared field isConnected", ex.getMessage());
 	}
 
 	private SymbolicValue addVariable(String name, Uniqueness permission) {
