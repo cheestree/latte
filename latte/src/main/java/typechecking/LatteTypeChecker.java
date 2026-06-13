@@ -264,40 +264,60 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 			// Δ(𝑥) = 𝜈 
 			UniquenessAnnotation permV = permEnv.get(v);
-			if (permV == null) {
-				logError(String.format("Permission for %s not found in field evaluation", v), fieldRead);
-			}
-			// Σ(𝜈) ≠ ⊥
-			if (permV.isBottom()) {
-				logError(String.format("%s:%s is not accepted in field evaluation", v, permV), fieldRead);
-			}
-
-			// field(Γ(𝑥), 𝑓) = α C
-			UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
-			if (fieldUA == null) {
-				logError(String.format("field annotation not found for %s", f.getSimpleName()), fieldRead);
-			}
-			// If field(Γ(𝑥), 𝑓) is not shared, field access requires α receiver > shared.
-			if (!fieldUA.isShared() && !permV.isGreaterEqualThan(Uniqueness.UNIQUE)) {
-				logError(String.format("Field %s is not shared but %s is", f.getSimpleName(), v), fieldRead);
-			}
-
-			// Δ(𝜈.𝑓) = 𝜈′; if absent, add fresh 𝜈′ with the declared field permission.
 			SymbolicValue vv = symbEnv.get(v, f.getSimpleName());
-			if (vv == null) {
+			// EVAL UNIQUE FIELD
+			// 𝜈.𝑓 ∉ Δ
+			if ( permV.isGreaterEqualThan(Uniqueness.UNIQUE) && vv == null) {
+				//field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶
+				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
+				if (fieldUA == null) logError(String.format("field annotation not found for %s", f.getSimpleName()), fieldRead);
+				//----------------
+				//𝜈.𝑓 : 𝜈′, Δ; 𝜈′: 𝛼, Σ   fresh 𝜈
 				vv = symbEnv.addField(v, f.getSimpleName());
 				permEnv.add(vv, fieldUA);
-			}
 
-			// Σ(𝜈′) ≠ ⊥
-			UniquenessAnnotation permVV = permEnv.get(vv);
-			if (permVV == null || permVV.isBottom()) {
-				logError(String.format("%s:%s is not accepted in field evaluation", vv, permVV), fieldRead);
-			}
-			// 𝑥.𝑓 ⇓ 𝜈′
-			fieldRead.putMetadata(EVAL_KEY, vv);
-			logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
+				// 𝑥 .𝑓 ⇓ 𝜈′
+				fieldRead.putMetadata(EVAL_KEY, vv);
+				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
+			// EVAL SHARED FIELD
+			} else if ( permV.isGreaterEqualThan(Uniqueness.SHARED) && vv == null){
+				// field(Γ(𝑥), 𝑓 ) = shared 𝐶
+				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
+				if (!fieldUA.isShared()){
+					logError(String.format("Field %s is not shared but %s is", f.getSimpleName(), v), fieldRead);
+				} else {
+					// 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ
+					vv = symbEnv.addField(v, f.getSimpleName());
+					permEnv.add(vv, fieldUA);
+					fieldRead.putMetadata(EVAL_KEY, vv);
+					logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
+				}
+			} else {
+				//EVAL FIELD
+				// Σ(𝜈) ≠ ⊥ 
+				if (permV.isBottom()){
+					logError(
+						String.format("%s:%s is not accepted in field evaluation", v, permV)
+						, fieldRead);
+				}
+				
+				// Δ(𝜈.𝑓 ) = 𝜈′, if not present, add it 
+				if (vv == null){
+					symbEnv.addField(vv, f.getSimpleName());
+					logError(String.format("Could not find symbolic value for %s.%s", v, f.getSimpleName())
+						, fieldRead);
+				}
 
+				// Σ(𝜈′) ≠ ⊥
+				UniquenessAnnotation permVV = permEnv.get(vv);
+				if (permVV.isBottom()){
+					logError(
+						String.format("%s:%s is not accepted in field evaluation", vv, permVV)
+						, fieldRead);
+				}
+				fieldRead.putMetadata(EVAL_KEY, vv);
+				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
+			}
 		} 
 		loggingSpaces--;
 	}
