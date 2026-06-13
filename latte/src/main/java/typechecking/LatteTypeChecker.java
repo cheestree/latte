@@ -1,14 +1,21 @@
 package typechecking;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementContract;
+import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
+import rj_language.ast.Expression;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtConstructorCall;
@@ -27,6 +34,7 @@ import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
+import spoon.reflect.declaration.CtType;
 import spoon.reflect.reference.CtFieldReference;
 import spoon.reflect.reference.CtLocalVariableReference;
 import spoon.reflect.reference.CtTypeReference;
@@ -39,10 +47,14 @@ import spoon.support.reflect.code.CtVariableWriteImpl;
  * and check if the code is well-typed
  */
 public class LatteTypeChecker  extends LatteAbstractChecker {
+	private final Deque<ContractContext> contractStack = new ArrayDeque<>();
+	private final RefinementPath refinementPath;
 
 	public LatteTypeChecker( SymbolicEnvironment symbEnv, 
-							PermissionEnvironment permEnv, ClassLevelMaps mtc) {
+							PermissionEnvironment permEnv, ClassLevelMaps mtc,
+							RefinementPath refinementPath) {
 		super(symbEnv, permEnv, mtc);
+		this.refinementPath = refinementPath;
 		logInfo("[ Latte Type checker initialized ]");
 	}
 
@@ -447,7 +459,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	private void handleConstructorArgs (CtConstructorCall<?> constCall){
 		CtClass<?> klass = maps.getClassFrom(constCall.getType());
 		int paramSize = constCall.getArguments().size();
-		CtConstructor<?> c = maps.geCtConstructor(klass, paramSize);
+		CtConstructor<?> c = maps.getCtConstructor(klass, paramSize);
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
 		if (klass == null || c == null){
 			logInfo(String.format("Cannot find the constructor for {} in the context", constCall.getType()), constCall);
@@ -693,5 +705,115 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		logInfo("Joining finished! "+ symbEnv + "\n "+ permEnv);
 	}
 
+	/**
+	 * Begins a method-body contract context for the given method.
+	 * The type environment starts with `this` mapped to the declaring class; formal
+	 * parameters are added later as visitCtParameter sees them.
+	 * @param method the method for which to begin the contract
+	 * @return the contract context or null if no contract is found
+	 */
+	public ContractContext beginMethodContract(CtMethod<?> method) {
+		CtClass<?> klass = method.getParent(CtClass.class);
+		if (klass == null) return null;
+		RefinementContract contract = maps.getMethodContract(klass, method.getSimpleName(), method.getParameters().size());
+		if (contract == null || (contract.getFrom() == null && contract.getTo() == null)) return null;
+		ContractContext ctx = new ContractContext(contract.getFrom(), contract.getTo(), method.getParameters().size());
+		ctx.location = method;
+		CtType<?> declaringType = method.getDeclaringType();
+		CtTypeReference<?> declaringTypeRef = declaringType == null ? null : declaringType.getReference();
+		if (declaringTypeRef != null) ctx.typeEnv.put(THIS, declaringTypeRef);
+		return ctx;
+	}
+
+	/**
+	 * Begins a constructor-body contract context for the given constructor.
+	 * The type environment starts with `this` mapped to the declaring class; formal
+	 * parameters are added later as visitCtParameter sees them.
+	 * @param constructor the constructor for which to begin the contract
+	 * @return the contract context or null if no contract is found
+	 */
+	public ContractContext beginConstructorContract(CtConstructor<?> constructor) {
+		CtClass<?> klass = constructor.getParent(CtClass.class);
+		if (klass == null) return null;
+		RefinementContract contract = maps.getConstructorContract(klass, constructor.getParameters().size());
+		if (contract == null || (contract.getFrom() == null && contract.getTo() == null)) return null;
+		ContractContext ctx = new ContractContext(contract.getFrom(), contract.getTo(), constructor.getParameters().size());
+		ctx.location = constructor;
+		CtTypeReference<?> declaringType = klass.getReference();
+		if (declaringType != null) ctx.typeEnv.put(THIS, declaringType);
+		return ctx;
+	}
+
+	private void evaluatePreIfNeeded(ContractContext ctx) {
+		if (ctx.preEvaluated) return;
+		ctx.preEvaluated = true;
+		if (ctx.pre == null) return;
+		try {
+			evaluateAndAssumePre(ctx.pre, ctx.typeEnv);
+		} catch (IllegalStateException ex) {
+			logError("Refinement precondition failed: " + ex.getMessage(), ctx.location);
+		}
+	}
+
+	private void evaluateAndAssumePre(
+		Expression pre,
+		Map<String, CtTypeReference<?>> typeEnv) {
+		// T-Method/CheckPre: Γ; Δ; Σ; 𝜑 ⊢ ρ_pre ⇓ ρ_pre′.
+		Expression prePredicate = new Evaluator(maps, typeEnv, symbEnv, permEnv)
+			.evalPredicate(pre);
+		// T-Method/CheckPre: continue under 𝜑 ∧ ρ_pre′.
+		if (prePredicate != null) {
+			this.refinementPath.addExpression(prePredicate);
+		}
+	}
+
+	private void restoreRefinementPath(int size) {
+		while (refinementPath.path.size() > size) {
+			refinementPath.path.remove(refinementPath.path.size() - 1);
+		}
+	}
+
+	/**
+	 * Builds the type environment used when evaluating an invocation precondition.
+	 * The environment maps `this` to the receiver target type and formal parameter
+	 * names to their declared types. It does not bind formal names to actual
+	 * symbolic values; Evaluator still resolves predicate variables through the
+	 * current symbolic environment. Generic substitutions are not handled here.
+	 * @param invocation the method invocation for which to build the type environment
+	 * @return the type environment mapping names to types for call-site contract evaluation
+	 */
+	private Map<String, CtTypeReference<?>> buildInvocationTypeEnv(CtInvocation<?> invocation) {
+		Map<String, CtTypeReference<?>> typeEnv = new HashMap<>();
+		CtExpression<?> target = invocation.getTarget();
+		if (target != null && target.getType() != null) {
+			typeEnv.put(THIS, target.getType());
+			CtClass<?> klass = maps.getClassFrom(target.getType().getTypeErasure());
+			CtMethod<?> method = klass == null ? null : maps.getCtMethod(klass, invocation.getExecutable().getSimpleName(), invocation.getArguments().size());
+			if (method != null) {
+				for (CtParameter<?> parameter : method.getParameters()) {
+					if (parameter.getType() != null) {
+						typeEnv.put(parameter.getSimpleName(), parameter.getType());
+					}
+				}
+			}
+		}
+		return typeEnv;
+	}
+
+	public static final class ContractContext {
+		final Expression pre;
+		final Expression post;
+		final int expectedParams;
+		final Map<String, CtTypeReference<?>> typeEnv = new HashMap<>();
+		CtElement location;
+		int seenParams = 0;
+		boolean preEvaluated = false;
+
+		private ContractContext(Expression pre, Expression post, int expectedParams) {
+			this.pre = pre;
+			this.post = post;
+			this.expectedParams = expectedParams;
+		}
+	}
 
 }
