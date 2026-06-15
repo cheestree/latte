@@ -14,6 +14,11 @@ public class SymbolicValue {
     }
 
     @Override
+    public int hashCode() {
+        return Integer.hashCode(value);
+    }
+
+    @Override
     public String toString() {
         return "𝜈" + value ;
     }
