@@ -144,7 +144,7 @@ public class Evaluator {
 				fieldValue = symbEnv.addField(receiverValue, fieldName);
 				permEnv.add(fieldValue, declaredFieldPerm);
 			// EvalSharedField
-			} else if (receiverPerm.isShared() && declaredFieldPerm.isShared()) {
+			} else if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
 				// field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′
 				fieldValue = symbEnv.addField(receiverValue, fieldName);
 				permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
