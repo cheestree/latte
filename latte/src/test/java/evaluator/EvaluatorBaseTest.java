@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeAll;
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.RefinementContract;
-import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
 import context.Uniqueness;
@@ -27,9 +26,6 @@ public class EvaluatorBaseTest extends EvaluatorTestSupport {
 	protected static CtTypeReference<?> writerType;
 	protected static CtTypeReference<?> readerType;
 	protected static Expression connectPrecondition;
-	protected SymbolicEnvironment symbEnv;
-	protected PermissionEnvironment permEnv;
-	protected RefinementPath refinementPath;
 
 	@BeforeAll
 	static void loadFieldMetadata() {
