@@ -1,0 +1,89 @@
+package typechecking;
+
+import java.util.Map;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import context.ClassLevelMaps;
+import context.SymbolicValue;
+import context.Uniqueness;
+import context.UniquenessAnnotation;
+import rj_language.ast.Expression;
+import rj_language.parsing.RefinementsParser;
+import rj_language.visitors.ExpressionPrettyPrinter;
+
+public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
+	@ParameterizedTest
+	@MethodSource("literalExpressions")
+	void evalLiteralCreatesFreshImmutableValueAndPathCondition(String source, String expectedLiteral) throws Exception {
+		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
+
+		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
+
+		assertEquals("𝜈0", ExpressionPrettyPrinter.print(result));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(new SymbolicValue(0)));
+		assertEquals("𝜈0 == " + expectedLiteral, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
+	}
+
+	@ParameterizedTest
+	@MethodSource("unaryExpressions")
+	void evalUnaryCreatesFreshImmutableValueAndPathCondition(String source, String expectedPathCondition) throws Exception {
+		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
+
+		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
+
+		assertEquals("𝜈1", ExpressionPrettyPrinter.print(result));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(new SymbolicValue(1)));
+		assertEquals(expectedPathCondition, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
+	}
+
+	@ParameterizedTest
+	@MethodSource("binaryExpressions")
+	void evalBinaryCreatesFreshImmutableValueAndPathCondition(String source, String expectedPathCondition) throws Exception {
+		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
+
+		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
+
+		assertEquals("𝜈2", ExpressionPrettyPrinter.print(result));
+		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(new SymbolicValue(2)));
+		assertEquals(expectedPathCondition, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
+	}
+
+	private static Stream<Arguments> literalExpressions() {
+		return Stream.of(
+			Arguments.of("true", "true"),
+			Arguments.of("42", "42"),
+			Arguments.of("3.5", "3.5"),
+			Arguments.of("\"latte\"", "\"latte\"")
+		);
+	}
+
+	private static Stream<Arguments> unaryExpressions() {
+		return Stream.of(
+			Arguments.of("!true", "𝜈0 == true && 𝜈1 == !𝜈0"),
+			Arguments.of("-42", "𝜈0 == 42 && 𝜈1 == -𝜈0")
+		);
+	}
+
+	private static Stream<Arguments> binaryExpressions() {
+		return Stream.of(
+			Arguments.of("1 + 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 + 𝜈1"),
+			Arguments.of("1 - 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 - 𝜈1"),
+			Arguments.of("1 * 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 * 𝜈1"),
+			Arguments.of("1 / 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 / 𝜈1"),
+			Arguments.of("1 % 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 % 𝜈1"),
+			Arguments.of("1 < 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 < 𝜈1"),
+			Arguments.of("1 > 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 > 𝜈1"),
+			Arguments.of("1 <= 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 <= 𝜈1"),
+			Arguments.of("1 >= 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 >= 𝜈1"),
+			Arguments.of("1 == 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 == 𝜈1"),
+			Arguments.of("1 != 2", "𝜈0 == 1 && 𝜈1 == 2 && 𝜈2 == 𝜈0 != 𝜈1"),
+			Arguments.of("true && false", "𝜈0 == true && 𝜈1 == false && 𝜈2 == 𝜈0 && 𝜈1"),
+			Arguments.of("true || false", "𝜈0 == true && 𝜈1 == false && 𝜈2 == 𝜈0 || 𝜈1")
+		);
+	}
+}
