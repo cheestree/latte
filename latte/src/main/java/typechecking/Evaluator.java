@@ -133,7 +133,7 @@ public class Evaluator {
 
 		if (fieldValue == null) {
 			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
-			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv.get(fieldName), "Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
+			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv.get(receiverName), "Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
 			// field(Γ(x),f) = 𝛼 𝐶
 			UniquenessAnnotation declaredFieldPerm = Utils.getOrThrow(maps.getFieldAnnotation(fieldName, receiverType), "Unknown field " + fieldName + " on type " + receiverType);
 
