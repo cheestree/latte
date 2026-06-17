@@ -86,9 +86,9 @@ public class Evaluator {
 	 */
 	private SymbolicValue evalVarValue(Var var) {
 		// Δ(𝑥) = 𝜈
-		SymbolicValue value = Utils.getOrThrow(symbEnv.get(var.getName()), new IllegalStateException("Unknown symbolic value for variable " + var.getName()));
+		SymbolicValue value = Utils.getOrThrow(symbEnv.get(var.getName()), "Unknown symbolic value for variable " + var.getName());
 		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation perm = Utils.getOrThrow(permEnv.get(value), new IllegalStateException("Missing permission for variable " + var.getName()));
+		UniquenessAnnotation perm = Utils.getOrThrow(permEnv.get(value), "Missing permission for variable " + var.getName());
 		if (perm.isBottom()) {
 			throw new IllegalStateException("Variable is inaccessible in evaluation: " + var.getName());
 		}
@@ -120,9 +120,9 @@ public class Evaluator {
 
 		// Δ(𝑥) = 𝜈
 		String receiverName = receiverVar.getName();
-		SymbolicValue receiverValue = Utils.getOrThrow(symbEnv.get(receiverName), new IllegalStateException("Unknown symbolic value for variable " + receiverName));
+		SymbolicValue receiverValue = Utils.getOrThrow(symbEnv.get(receiverName), "Unknown symbolic value for variable " + receiverName);
 		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation receiverPerm = Utils.getOrThrow(permEnv.get(receiverValue), new IllegalStateException("Missing permission for receiver " + receiverName));
+		UniquenessAnnotation receiverPerm = Utils.getOrThrow(permEnv.get(receiverValue), "Missing permission for receiver " + receiverName);
 
 		if (receiverPerm.isBottom()) {
 			throw new IllegalStateException("Receiver is inaccessible in evaluation: " + receiverName);
@@ -134,9 +134,9 @@ public class Evaluator {
 
 		if (fieldValue == null) {
 			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
-			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv != null ? typeEnv.get(receiverName) : null, new IllegalStateException("Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName));
+			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv != null ? typeEnv.get(receiverName) : null, "Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
 			// field(Γ(x),f) = 𝛼 𝐶
-			UniquenessAnnotation declaredFieldPerm = Utils.getOrThrow(maps.getFieldAnnotation(fieldName, receiverType), new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType));
+			UniquenessAnnotation declaredFieldPerm = Utils.getOrThrow(maps.getFieldAnnotation(fieldName, receiverType), "Unknown field " + fieldName + " on type " + receiverType);
 
 			// EvalUniqueOrBorrowedField
 			if (isExclusiveReceiver(receiverPerm)) {
@@ -154,7 +154,7 @@ public class Evaluator {
 		}
 
 		// Σ(𝜈′) ≠ ⊥
-		UniquenessAnnotation fieldPerm = Utils.getOrThrow(permEnv.get(fieldValue), new IllegalStateException("Missing permission for field " + receiverName + "." + fieldName));
+		UniquenessAnnotation fieldPerm = Utils.getOrThrow(permEnv.get(fieldValue), "Missing permission for field " + receiverName + "." + fieldName);
 		if (fieldPerm.isBottom()) {
 			throw new IllegalStateException("Field is inaccessible in evaluation: " + receiverName + "." + fieldName);
 		}
