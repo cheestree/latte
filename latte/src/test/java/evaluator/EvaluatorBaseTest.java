@@ -1,7 +1,6 @@
 package evaluator;
 
 import java.io.File;
-import java.util.Arrays;
 
 import org.junit.jupiter.api.BeforeAll;
 
@@ -64,9 +63,5 @@ public class EvaluatorBaseTest extends EvaluatorTestSupport {
 		SymbolicValue value = symbEnv.addVariable(name);
 		permEnv.add(value, new UniquenessAnnotation(permission));
 		return value;
-	}
-
-	protected static long countOccurrences(String haystack, String needle) {
-		return Arrays.stream(haystack.split(needle, -1)).count() - 1;
 	}
 }

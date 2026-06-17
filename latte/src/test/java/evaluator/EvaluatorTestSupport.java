@@ -1,11 +1,21 @@
 package evaluator;
 
+import java.util.Arrays;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import context.PermissionEnvironment;
 import context.RefinementPath;
 import context.SymbolicEnvironment;
+import context.SymbolicValue;
+import context.Uniqueness;
+import context.UniquenessAnnotation;
+import rj_language.ast.Expression;
+import rj_language.visitors.ExpressionPrettyPrinter;
 
 abstract class EvaluatorTestSupport {
     protected SymbolicEnvironment symbEnv;
@@ -26,5 +36,25 @@ abstract class EvaluatorTestSupport {
         refinementPath = null;
         permEnv.exitScope();
         symbEnv.exitScope();
+    }
+
+    protected void assertPrints(Expression expression, String expected) {
+        assertEquals(expected, ExpressionPrettyPrinter.print(expression));
+    }
+
+    protected void assertPrintsMatching(Expression expression, String regex) {
+        assertTrue(ExpressionPrettyPrinter.print(expression).matches(regex));
+    }
+
+    protected long countPrintedOccurrences(Expression expression, SymbolicValue value) {
+        return Arrays.stream(ExpressionPrettyPrinter.print(expression).split(value.toString(), -1)).count() - 1;
+    }
+
+    protected void assertImmutable(int symbolicIndex) {
+        assertImmutable(new SymbolicValue(symbolicIndex));
+    }
+
+    protected void assertImmutable(SymbolicValue value) {
+        assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(value));
     }
 }

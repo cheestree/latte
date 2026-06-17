@@ -6,7 +6,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -17,7 +16,6 @@ import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
 import rj_language.ast.Var;
 import rj_language.parsing.RefinementsParser;
-import rj_language.visitors.ExpressionPrettyPrinter;
 import typechecking.Evaluator;
 
 public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
@@ -30,7 +28,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 
 			Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x"));
 
-			assertEquals(x.toString(), ExpressionPrettyPrinter.print(result));
+			assertPrints(result, x.toString());
 		}
 	
 		@Test
@@ -53,7 +51,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 
 			Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
 
-			assertEquals(field.toString(), ExpressionPrettyPrinter.print(result));
+			assertPrints(result, field.toString());
 		}
 
 		@Test
@@ -64,8 +62,8 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
 
 			SymbolicValue field = symbEnv.get(x, "isConnected");
-			assertEquals(field.toString(), ExpressionPrettyPrinter.print(result));
-			assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(field));
+			assertPrints(result, field.toString());
+			assertImmutable(field);
 		}
 
 		@Test
@@ -94,7 +92,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 		@Test
 		void flattensToSingleSymbolicValue() {
 			assertInstanceOf(Var.class, result);
-			assertTrue(ExpressionPrettyPrinter.print(result).matches("𝜈\\d+"));
+			assertPrintsMatching(result, "𝜈\\d+");
 		}
 
 		@Test
@@ -106,8 +104,8 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 		@Test
 		void assignsImmutablePermissionToEachField() {
 			for (String field : List.of("isConnected", "isClosed")) {
-				assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(symbEnv.get(thisValue, field)));
-				assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(symbEnv.get(sink, field)));
+				assertImmutable(symbEnv.get(thisValue, field));
+				assertImmutable(symbEnv.get(sink, field));
 			}
 		}
 
@@ -118,11 +116,11 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			SymbolicValue sinkConnected = symbEnv.get(sink, "isConnected");
 			SymbolicValue sinkClosed = symbEnv.get(sink, "isClosed");
 
-			String conjunct = ExpressionPrettyPrinter.print(refinementPath.toConjunct());
-			assertEquals(1, countOccurrences(conjunct, thisConnected.toString()));
-			assertEquals(1, countOccurrences(conjunct, thisClosed.toString()));
-			assertEquals(1, countOccurrences(conjunct, sinkConnected.toString()));
-			assertEquals(1, countOccurrences(conjunct, sinkClosed.toString()));
+			Expression conjunct = refinementPath.toConjunct();
+			assertEquals(1, countPrintedOccurrences(conjunct, thisConnected));
+			assertEquals(1, countPrintedOccurrences(conjunct, thisClosed));
+			assertEquals(1, countPrintedOccurrences(conjunct, sinkConnected));
+			assertEquals(1, countPrintedOccurrences(conjunct, sinkClosed));
 		}
 	}
 }

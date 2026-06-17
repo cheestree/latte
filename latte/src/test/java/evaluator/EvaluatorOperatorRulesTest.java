@@ -3,18 +3,13 @@ package evaluator;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import context.ClassLevelMaps;
-import context.SymbolicValue;
-import context.Uniqueness;
-import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
 import rj_language.parsing.RefinementsParser;
-import rj_language.visitors.ExpressionPrettyPrinter;
 import typechecking.Evaluator;
 
 public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
@@ -25,9 +20,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 
 		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
 
-		assertEquals("𝜈0", ExpressionPrettyPrinter.print(result));
-		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(new SymbolicValue(0)));
-		assertEquals("𝜈0 == " + expectedLiteral, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
+		assertPrints(result, "𝜈0");
+		assertImmutable(0);
+		assertPrints(refinementPath.toConjunct(), "𝜈0 == " + expectedLiteral);
 	}
 
 	@ParameterizedTest
@@ -37,9 +32,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 
 		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
 
-		assertEquals("𝜈1", ExpressionPrettyPrinter.print(result));
-		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(new SymbolicValue(1)));
-		assertEquals(expectedPathCondition, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
+		assertPrints(result, "𝜈1");
+		assertImmutable(1);
+		assertPrints(refinementPath.toConjunct(), expectedPathCondition);
 	}
 
 	@ParameterizedTest
@@ -49,9 +44,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 
 		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
 
-		assertEquals("𝜈2", ExpressionPrettyPrinter.print(result));
-		assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(new SymbolicValue(2)));
-		assertEquals(expectedPathCondition, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
+		assertPrints(result, "𝜈2");
+		assertImmutable(2);
+		assertPrints(refinementPath.toConjunct(), expectedPathCondition);
 	}
 
 	private static Stream<Arguments> literalExpressions() {
