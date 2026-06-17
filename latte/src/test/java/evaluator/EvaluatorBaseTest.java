@@ -9,6 +9,7 @@ import context.PermissionEnvironment;
 import context.RefinementContract;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
+import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
@@ -34,11 +35,14 @@ public class EvaluatorBaseTest extends EvaluatorTestSupport {
 		CtModel model = launcher.buildModel();
 
 		maps = new ClassLevelMaps();
-		model.getRootPackage().accept(new LatteClassFirstPass(
+		model.getRootPackage().accept(
+			new LatteClassFirstPass(
+			new TypeEnvironment(),
 			new SymbolicEnvironment(),
 			new PermissionEnvironment(),
 			maps));
 		model.getRootPackage().accept(new RefinementFirstPass(
+			new TypeEnvironment(),
 			new SymbolicEnvironment(),
 			new PermissionEnvironment(),
 			maps));
