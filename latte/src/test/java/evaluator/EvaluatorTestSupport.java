@@ -3,30 +3,33 @@ package evaluator;
 import java.util.Arrays;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
 
 import context.PermissionEnvironment;
 import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
+import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
 import rj_language.visitors.ExpressionPrettyPrinter;
 
 abstract class EvaluatorTestSupport {
+    protected TypeEnvironment typeEnv;
     protected SymbolicEnvironment symbEnv;
     protected PermissionEnvironment permEnv;
     protected RefinementPath refinementPath;
 
     @BeforeEach
     void setEnvironment() {
+        typeEnv = new TypeEnvironment();
         symbEnv = new SymbolicEnvironment();
         permEnv = new PermissionEnvironment();
         refinementPath = new RefinementPath();
+        typeEnv.enterScope();
         symbEnv.enterScope();
         permEnv.enterScope();
     }
@@ -34,6 +37,7 @@ abstract class EvaluatorTestSupport {
     @AfterEach
     void tearDownEnvironment() {
         refinementPath = null;
+        typeEnv.exitScope();
         permEnv.exitScope();
         symbEnv.exitScope();
     }

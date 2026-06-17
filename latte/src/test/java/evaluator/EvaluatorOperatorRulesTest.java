@@ -1,6 +1,5 @@
 package evaluator;
 
-import java.util.Map;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,7 +15,7 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	@ParameterizedTest
 	@MethodSource("literalExpressions")
 	void evalLiteralCreatesFreshImmutableValueAndPathCondition(String source, String expectedLiteral) throws Exception {
-		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
+		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), typeEnv, symbEnv, permEnv, refinementPath);
 
 		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
 
@@ -28,7 +27,7 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	@ParameterizedTest
 	@MethodSource("unaryExpressions")
 	void evalUnaryCreatesFreshImmutableValueAndPathCondition(String source, String expectedPathCondition) throws Exception {
-		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
+		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), typeEnv, symbEnv, permEnv, refinementPath);
 
 		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
 
@@ -40,7 +39,7 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	@ParameterizedTest
 	@MethodSource("binaryExpressions")
 	void evalBinaryCreatesFreshImmutableValueAndPathCondition(String source, String expectedPathCondition) throws Exception {
-		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
+		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), typeEnv, symbEnv, permEnv, refinementPath);
 
 		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
 

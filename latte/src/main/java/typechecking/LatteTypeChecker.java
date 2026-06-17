@@ -7,6 +7,7 @@ import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
+import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import spoon.reflect.code.CtAssignment;
@@ -40,9 +41,9 @@ import spoon.support.reflect.code.CtVariableWriteImpl;
  */
 public class LatteTypeChecker  extends LatteAbstractChecker {
 
-	public LatteTypeChecker( SymbolicEnvironment symbEnv, 
+	public LatteTypeChecker( TypeEnvironment typeEnv, SymbolicEnvironment symbEnv, 
 							PermissionEnvironment permEnv, ClassLevelMaps mtc) {
-		super(symbEnv, permEnv, mtc);
+		super(typeEnv, symbEnv, permEnv, mtc);
 		logInfo("[ Latte Type checker initialized ]");
 	}
 

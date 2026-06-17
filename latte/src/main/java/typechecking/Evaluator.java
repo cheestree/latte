@@ -1,12 +1,11 @@
 package typechecking;
 
-import java.util.Map;
-
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
+import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.BinaryExpression;
@@ -24,14 +23,14 @@ import utils.Utils;
 
 public class Evaluator {
 	private final ClassLevelMaps maps;
-	private final Map<String, CtTypeReference<?>> typeEnv;
+	private final TypeEnvironment typeEnv;
 	private final SymbolicEnvironment symbEnv;
 	private final PermissionEnvironment permEnv;
 	private final RefinementPath refinementPath;
 
 	public Evaluator(
 		ClassLevelMaps maps,
-		Map<String, CtTypeReference<?>> typeEnv,
+		TypeEnvironment typeEnv,
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {
@@ -134,7 +133,7 @@ public class Evaluator {
 
 		if (fieldValue == null) {
 			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
-			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv != null ? typeEnv.get(receiverName) : null, "Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
+			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv.get(fieldName), "Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
 			// field(Γ(x),f) = 𝛼 𝐶
 			UniquenessAnnotation declaredFieldPerm = Utils.getOrThrow(maps.getFieldAnnotation(fieldName, receiverType), "Unknown field " + fieldName + " on type " + receiverType);
 
