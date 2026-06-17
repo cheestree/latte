@@ -1,4 +1,4 @@
-package typechecking;
+package evaluator;
 
 import java.io.File;
 import java.util.Arrays;
@@ -19,6 +19,8 @@ import spoon.reflect.CtModel;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.filter.TypeFilter;
+import typechecking.LatteClassFirstPass;
+import typechecking.RefinementFirstPass;
 
 public class EvaluatorBaseTest extends EvaluatorTestSupport {
 	protected static ClassLevelMaps maps;

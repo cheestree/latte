@@ -1,4 +1,4 @@
-package typechecking;
+package evaluator;
 
 import java.util.Map;
 import java.util.stream.Stream;
@@ -15,6 +15,7 @@ import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
 import rj_language.parsing.RefinementsParser;
 import rj_language.visitors.ExpressionPrettyPrinter;
+import typechecking.Evaluator;
 
 public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	@ParameterizedTest

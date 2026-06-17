@@ -1,4 +1,4 @@
-package typechecking;
+package evaluator;
 
 import java.util.List;
 import java.util.Map;
@@ -18,6 +18,7 @@ import rj_language.ast.Expression;
 import rj_language.ast.Var;
 import rj_language.parsing.RefinementsParser;
 import rj_language.visitors.ExpressionPrettyPrinter;
+import typechecking.Evaluator;
 
 public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 	@Nested
