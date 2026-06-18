@@ -5,11 +5,13 @@ import java.util.List;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
 import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
+import rj_language.ast.Expression;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtConstructorCall;
@@ -40,10 +42,20 @@ import spoon.support.reflect.code.CtVariableWriteImpl;
  * and check if the code is well-typed
  */
 public class LatteTypeChecker  extends LatteAbstractChecker {
+	private final RefinementPath refPath;
+	private final Evaluator evaluator;
 
 	public LatteTypeChecker( TypeEnvironment typeEnv, SymbolicEnvironment symbEnv, 
-							PermissionEnvironment permEnv, ClassLevelMaps mtc) {
+							PermissionEnvironment permEnv, ClassLevelMaps mtc, RefinementPath refPath) {
 		super(typeEnv, symbEnv, permEnv, mtc);
+		this.refPath = refPath;
+		this.evaluator = new Evaluator(
+			maps,
+			typeEnv,
+			symbEnv,
+			permEnv,
+			refPath
+		);
 		logInfo("[ Latte Type checker initialized ]");
 	}
 
@@ -714,5 +726,10 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		logInfo("Joining finished! "+ symbEnv + "\n "+ permEnv);
 	}
 
-
+	private void evaluateAndAssumePre(Expression pre) {
+		Expression prePredicate = evaluator.evalPredicate(pre);
+		if (prePredicate != null) {
+			refPath.addExpression(prePredicate);
+		}
+	}
 }
