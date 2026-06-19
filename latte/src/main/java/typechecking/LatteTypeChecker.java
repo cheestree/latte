@@ -14,6 +14,8 @@ import context.UniquenessAnnotation;
 import rj_language.ast.BinaryExpression;
 import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
+import rj_language.ast.UnaryExpression;
+import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
@@ -30,6 +32,7 @@ import spoon.reflect.code.CtLocalVariable;
 import spoon.reflect.code.CtReturn;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.CtVariableRead;
+import spoon.reflect.code.UnaryOperatorKind;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
@@ -614,22 +617,50 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * Rule EvalUnary
+	 * Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′ 
+	 * fresh 𝜈
+	 * if ⊕ ∈ {-, !}
+	 * -------------------------------------------
+	 * Γ; Δ; Σ ⊢ ⊕ 𝑒 ⇓ 𝜈 ⊣ Δ′; 𝜈: imm, Σ′; 𝜑 ∧ (𝜈 == ⊕𝜈1)
 	 */
 	@Override
 	public <T> void visitCtUnaryOperator(CtUnaryOperator<T> operator) {
 		logInfo("Visiting unary operator <"+ operator.toStringDebug()+">", operator);
 		loggingSpaces++;
+		// 𝑒 ⇓ 𝜈1
 		super.visitCtUnaryOperator(operator);
 
-		// Get a fresh symbolic value and add it to the environment with a shared default value
-		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.SHARED);
+		UnaryOperatorKind kind = operator.getKind();
+		// Increment and decrement operators do not have a specific permission, so they're treated differently
+		if (kind == UnaryOperatorKind.POSTINC || kind == UnaryOperatorKind.POSTDEC || kind == UnaryOperatorKind.PREINC  || kind == UnaryOperatorKind.PREDEC) {
+			SymbolicValue sv = symbEnv.getFresh();
+			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.SHARED));
+			operator.putMetadata(EVAL_KEY, sv);
+			return;
+		}
 
-		// Add the symbolic value to the environment with a shared default value
+		SymbolicValue operand = (SymbolicValue) operator.getOperand().getMetadata(EVAL_KEY);
+		if (operand == null) {
+			logError("Symbolic value for unary operand not found", operator);
+			return;
+		}
+
+		// fresh 𝜈
+		// 𝜈: imm
+		SymbolicValue sv = symbEnv.getFresh();
+		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
 		permEnv.add(sv, ua);
 		
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
+		
+		// if ⊕ ∈ {-, !}
+		UnaryOperator op = SpoonToRjTranslator.toRjUnaryOperator(operator.getKind());
+		if (op != null) {
+			// 𝜑 ∧ (𝜈 == ⊕𝜈1)
+			refPath.addExpression(new BinaryExpression(new Var(sv.toString()),BinaryOperator.EQ, new UnaryExpression(op, new Var(operand.toString()))));
+		}
+
 		logInfo(operator.toStringDebug() + ": "+ sv);
 		loggingSpaces--;
 	}

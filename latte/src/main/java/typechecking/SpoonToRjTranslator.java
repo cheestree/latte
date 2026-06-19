@@ -5,9 +5,19 @@ import rj_language.ast.LiteralBoolean;
 import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
+import rj_language.ast.UnaryOperator;
 import spoon.reflect.code.CtLiteral;
+import spoon.reflect.code.UnaryOperatorKind;
 
 public class SpoonToRjTranslator {
+	public static UnaryOperator toRjUnaryOperator(UnaryOperatorKind kind) {
+		return switch (kind) {
+			case NEG -> UnaryOperator.NEGATE;
+			case NOT -> UnaryOperator.NOT;
+			default  -> null;
+		};
+	}
+	
 	public static <T> Expression toRjLiteral(CtLiteral<T> literal) {
 		Object value = literal.getValue();
 		// Needs to be replaced with a switch expression once we are on Java 21
