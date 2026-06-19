@@ -1,5 +1,6 @@
 package typechecking;
 
+import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.LiteralBoolean;
 import rj_language.ast.LiteralInt;
@@ -10,6 +11,24 @@ import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.UnaryOperatorKind;
 
 public class SpoonToRjTranslator {
+	public static BinaryOperator toRjBinaryOperator(spoon.reflect.code.BinaryOperatorKind kind) {
+		return switch (kind) {
+			case OR -> BinaryOperator.OR;
+			case AND -> BinaryOperator.AND;
+			case EQ -> BinaryOperator.EQ;
+			case NE -> BinaryOperator.NEQ;
+			case LT -> BinaryOperator.LT;
+			case LE -> BinaryOperator.LE;
+			case GT -> BinaryOperator.GT;
+			case GE -> BinaryOperator.GE;
+			case PLUS -> BinaryOperator.ADD;
+			case MINUS -> BinaryOperator.SUB;
+			case MUL -> BinaryOperator.MUL;
+			case DIV -> BinaryOperator.DIV;
+			default  -> null;
+		};
+	}
+
 	public static UnaryOperator toRjUnaryOperator(UnaryOperatorKind kind) {
 		return switch (kind) {
 			case NEG -> UnaryOperator.NEGATE;

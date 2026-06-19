@@ -30,6 +30,7 @@ import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.CtLocalVariable;
 import spoon.reflect.code.CtReturn;
+import spoon.reflect.code.CtThisAccess;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.code.UnaryOperatorKind;
@@ -221,6 +222,11 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		if (m == null){
 			logInfo("Cannot find method {" + metName + "} for {} in the context");
+			// Method isn't found in the class maps, so we assign it shared permission and a fresh symbolic value.
+			// This makes it so that we don't make any assumption about its permissions, but it allows the type checker to continue checking the rest of the code. If it was bottom, it would stop the type checking process, either from being consumed or inaccessible, while higher permissions would wrongly make assumptions like refinement paths that aren't true.
+			SymbolicValue unknown = symbEnv.getFresh();
+			permEnv.add(unknown, new UniquenessAnnotation(Uniqueness.SHARED));
+			invocation.putMetadata(EVAL_KEY, unknown);
 			return;
 		}
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
@@ -595,24 +601,68 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * Rule EvalBinary
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
+	 * Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈2 ⊣ Δ2; Σ2; 𝜑2 
+	 * fresh 𝜈
+	 * if ⊕ ∈ {+, -, *, /, ==, !=, <, >, <=, >=, || , &&}
+	 * ---------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ2 ; 𝜈: imm, Σ2 ; 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
 	 */
 	@Override
 	public <T> void visitCtBinaryOperator(CtBinaryOperator<T> operator) {
 		logInfo("Visiting binary operator <"+ operator.toStringDebug()+">", operator);
 		loggingSpaces++;
+		// 𝑒1 ⇓ 𝜈1
+		// 𝑒2 ⇓ 𝜈2
 		super.visitCtBinaryOperator(operator);
 
-		// Get a fresh symbolic value and add it to the environment with a shared default value
-		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.FREE);
+		SymbolicValue operand1 = (SymbolicValue) operator.getLeftHandOperand().getMetadata(EVAL_KEY);
+		SymbolicValue operand2 = (SymbolicValue) operator.getRightHandOperand().getMetadata(EVAL_KEY);
+		if (operand1 == null || operand2 == null) {
+			logError("Symbolic value for binary operator operand not found", operator);
+			return;
+		}
 
-		// Add the symbolic value to the environment with a shared default value
+		// fresh 𝜈
+		SymbolicValue sv = symbEnv.getFresh();
+		// 𝜈: imm
+		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
 		permEnv.add(sv, ua);
+
+		// if ⊕ ∈ {+, -, *, /, ==, !=, <, >, <=, >=, || , &&}
+		BinaryOperator op = SpoonToRjTranslator.toRjBinaryOperator(operator.getKind());
+		if (op != null){
+			// 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
+			refPath.addExpression(new BinaryExpression(new Var(sv.toString()),BinaryOperator.EQ, new BinaryExpression(new Var(operand1.toString()), op, new Var(operand2.toString()))));
+		}
 
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
 		logInfo(operator.toStringDebug() + ": "+ sv);
 		loggingSpaces--;
+	}
+	/**
+	 * EvalVar
+	 * 𝑀 ::= (𝜌 » 𝜌) 𝜏 𝑚(𝜏 this, 𝜏 𝑥) { 𝑠 return 𝑒 ; }
+	 * EvalVar applies directly. Spoon models it as CtThisAccess rather than CtVariableRead, requiring a separate visitor.
+	 */
+	@Override
+	public <T> void visitCtThisAccess(CtThisAccess<T> thisAccess) {
+		super.visitCtThisAccess(thisAccess);
+
+		// Δ(this) = 𝜈
+		SymbolicValue sv = symbEnv.get(THIS);
+		if (sv == null) {
+			logError("Symbolic value for this not found", thisAccess);
+			return;
+		}
+		// Σ(𝜈) ≠ ⊥
+		UniquenessAnnotation ua = permEnv.get(sv);
+		if (ua.isBottom()) {
+			logError(String.format("%s:%s is not accepted in this access evaluation", sv, ua), thisAccess);
+			return;
+		}
+		thisAccess.putMetadata(EVAL_KEY, sv);
 	}
 
 	/**
