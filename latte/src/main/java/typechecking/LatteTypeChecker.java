@@ -695,6 +695,19 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * Performs the joining operation after the if statement
+	 * 
+	 * 𝐾𝑣 = domvar (Δ1 ) ∩ domvar (Δ2)
+	 * 𝐾 = 𝐾𝑣 ∪ { 𝑘.𝑓 | 𝑘 ∈ 𝐾, Δ1 (𝑘.𝑓) and Δ2 (𝑘.𝑓) defined }
+	 * fresh 𝜈𝑘 for each 𝑘 ∈ 𝐾
+	 * Δ′ = { 𝑘 ↦→ 𝜈 𝑘 | 𝑘 ∈ 𝐾𝑣 } ∪ { 𝜈𝑘.𝑓 ↦→ 𝜈𝑘.𝑓 | 𝑘.𝑓 ∈ 𝐾 }
+	 * 𝐽eq = { (𝜈𝑐 ⇒ 𝜈𝑘 = Δ1 (𝑘)) ∧ (¬𝜈𝑐 ⇒ 𝜈 𝑘 = Δ2 (𝑘)) | 𝑘 ∈ 𝐾 }
+	 * Σ′ = (Σ1 ⊓ Σ2) ∪ { 𝜈𝑘 : Σ1 (Δ1 (𝑘)) ⊓ Σ2 (Δ2 (𝑘)) | 𝑘 ∈ 𝐾 }
+	 * 𝜑then = 𝜑1 \ (𝜑0 ∪ {𝜈𝑐 })
+	 * 𝜑else = 𝜑2 \ (𝜑0 ∪ {¬𝜈𝑐})
+	 * 𝜑′ = 𝜑0 ∧ (𝐽eq ∧ (𝜈𝑐 ⇒ 𝜑then) ∧ (¬𝜈𝑐 ⇒ 𝜑else))
+	 * -------------------------------------------------
+	 * Δ1; Σ1; 𝜑1 ∧ (𝜑0 ∧ 𝜈𝑐) Δ2; Σ2; 𝜑2 ⇛ Δ′; Σ′; 𝜑′
+	 * TODO: Check refinement path premises
 	 * @param thenSymbEnv
 	 * @param thenPermEnv
 	 * @param elseSymbEnv
