@@ -5,6 +5,7 @@ import java.util.List;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementContract;
 import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
@@ -36,6 +37,7 @@ import spoon.reflect.reference.CtTypeReference;
 import spoon.support.reflect.code.CtThisAccessImpl;
 import spoon.support.reflect.code.CtVariableReadImpl;
 import spoon.support.reflect.code.CtVariableWriteImpl;
+import utils.Constants;
 
 /**
  * In the type checker we go through the code, add metadata regarding the types and their permissions
@@ -74,6 +76,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		enterScopes();
 
 		// Assume 'this' is a parameter always borrowed
+		typeEnv.add(THIS, c.getDeclaringType().getReference());
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 
@@ -82,19 +85,41 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		exitScopes();
 	}
 	
+	/**
+	 * To evaluate both premises, it is necessary to have 'this' and the parameters in the symbolic and permission environments, as they are used in the evaluation of the precondition and the body of the method.
+	 * The rest of the T-method premises are handled in the visitCtBlock method, where the body of the method is evaluated.
+	 * T-Method
+	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝜌𝑝𝑟𝑒 ⇓ 𝜌′𝑝𝑟𝑒 ⊣ Γ1; Δ1; Σ1; 𝜑1
+	 *  Γ1; Δ1; Σ1; 𝜑1 ∧ 𝜌 𝑝𝑟𝑒′ ⊢ 𝑠 ⊣ Γ2; Δ2; Σ2; 𝜑2
+	 */
 	@Override
 	public <T> void visitCtMethod(CtMethod<T> m) {
 		logInfo("Visiting method <"+ m.getSimpleName()+">", m);
 		enterScopes();
 
-		// Assume 'this' is a parameter always borrowed
+		// Γ = this: C0, Δ = this: ν0, Σ = ν0: borrowed
+		typeEnv.add(THIS, m.getDeclaringType().getReference());
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 
-		super.visitCtMethod(m);
+		for (CtParameter<?> param : m.getParameters()) {
+			visitCtParameter(param);
+		}
+
+		RefinementContract contract = (RefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
+		// Γ; Δ; Σ; 𝜑 ⊢ 𝜌𝑝𝑟𝑒 ⇓ 𝜌′𝑝𝑟𝑒 ⊣ Γ1; Δ1; Σ1; 𝜑1
+		Expression pre = contract == null ? null : contract.getFrom();
+		if (pre != null) {
+			evaluateAndAssumePre(pre);
+		}
+
+		// Γ1; Δ1; Σ1; 𝜑1 ∧ 𝜌 𝑝𝑟𝑒′ ⊢ 𝑠 ⊣ Γ2; Δ2; Σ2; 𝜑2
+		if (m.getBody() != null) {
+			visitCtBlock(m.getBody());
+		}
+
 		exitScopes();
 	}
-	
 	
 	@Override
 	public <T> void visitCtParameter(CtParameter<T> parameter) {
@@ -102,6 +127,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtParameter(parameter);
 		
+		typeEnv.add(parameter.getSimpleName(), parameter.getType());
 		SymbolicValue sv = symbEnv.addVariable(parameter.getSimpleName());
 		UniquenessAnnotation ua = new UniquenessAnnotation(parameter);
 		permEnv.add(sv, ua);
