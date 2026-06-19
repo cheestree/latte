@@ -17,6 +17,8 @@ import rj_language.ast.Expression;
 import rj_language.ast.Var;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
+import spoon.reflect.code.CtCatch;
+import spoon.reflect.code.CtCatchVariable;
 import spoon.reflect.code.CtConstructorCall;
 import spoon.reflect.code.CtExpression;
 import spoon.reflect.code.CtFieldRead;
@@ -657,16 +659,46 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		loggingSpaces--;
 	}
 
+	/**
+	 *  EvalVar
+	 *  Δ(𝑥) = 𝜈 Σ(𝜈) ≠ ⊥
+	 *  ----------------------------------
+	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
+	 */
 	@Override
 	public <T> void visitCtVariableRead(CtVariableRead<T> variableRead) {
 		loggingSpaces++;
 		logInfo("Visiting variable read <"+ variableRead.toString()+">", variableRead);
 		super.visitCtVariableRead(variableRead);
 
+		// Δ(𝑥) = 𝜈
 		SymbolicValue sv = symbEnv.get(variableRead.getVariable().getSimpleName());
+		if (sv == null) {
+			logError(String.format("Symbolic value for variable %s not found in the symbolic environment", variableRead.getVariable().getSimpleName()), variableRead);
+		}
 		variableRead.putMetadata(EVAL_KEY, sv);
+
+		// Σ(𝜈) ≠ ⊥
+		UniquenessAnnotation ua = permEnv.get(sv);
+		if (ua.isBottom()){
+			logError(String.format("%s:%s is not accepted in variable read evaluation", sv, ua), variableRead);
+		}
 		logInfo(variableRead.toString() + ": "+ sv);
 		loggingSpaces--;
+	}
+
+	/**
+	 * Rule EvalCatch
+	 * Visit a catch block, add the exception variable to the symbolic environment with a borrowed permission. This is necessary because previously the symbol of the exception was added as null, but given the new null check in the rules, we need to add it with a borrowed permission to avoid errors in the evaluation of local variable reads of the exception variable.
+	 */
+	@Override
+	public void visitCtCatch(CtCatch catchBlock) {
+    	// The exception variable is added to the symbolic environment with a borrowed permission, as we don't own the exception, we just catch it
+		CtCatchVariable<?> param = catchBlock.getParameter();
+		SymbolicValue sv = symbEnv.addVariable(param.getSimpleName());
+		// Borrowed permission because we don't own it, we just catch it
+		permEnv.add(sv, new UniquenessAnnotation(Uniqueness.BORROWED));
+		super.visitCtCatch(catchBlock);
 	}
 
 	/**
