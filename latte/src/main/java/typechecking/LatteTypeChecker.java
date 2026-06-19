@@ -636,6 +636,9 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * Rule EvalVar
+	 * 
+	 * Both CtVariableRead and CtLocalVariableReference have the same rule, but CtLocalVariableReference is used for local variables, while CtVariableRead is used for variables in general (including fields and parameters). Coverage of both is necessary to ensure that all variable references are handled correctly in the symbolic evaluation.
+	 * TODO: Check if we can merge the two methods into one, as they have the same logic. If not, we can keep them separate for clarity.
 	 */
 	@Override
 	public <T> void visitCtLocalVariableReference(CtLocalVariableReference<T> reference) {
