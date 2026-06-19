@@ -11,7 +11,10 @@ import context.SymbolicValue;
 import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
+import rj_language.ast.BinaryExpression;
+import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
+import rj_language.ast.Var;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtConstructorCall;
@@ -669,6 +672,9 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	/**
 	 * Rule EvalConst
 	 * Visit a literal, add a symbolic value to the environment and a permission of shared
+	 * fresh 𝜈
+	 * -------------------------------------------
+	 * Γ; Δ; Σ ⊢ 𝑐 ⇓ 𝜈 ⊣ Δ; 𝜈: imm, Σ; 𝜑 ∧ (𝜈 == 𝑐)
 	 */
 	@Override
 	public <T> void visitCtLiteral(CtLiteral<T> literal) {
@@ -677,15 +683,21 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		super.visitCtLiteral(literal);
 
 		// Get a fresh symbolic value and add it to the environment with an immutable default value
+		// fresh 𝜈
 		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
 
-		if (literal.getValue() == null)
-			ua = new UniquenessAnnotation(Uniqueness.FREE);  // its a null literal
-		
-
-		// Add the symbolic value to the environment with an immutable default value
-		permEnv.add(sv, ua);
+		// Grammar doesn't allow null literals, but we want to treat them as free values, so we check for null and assign the appropriate permission
+		if (literal.getValue() == null) {
+			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.FREE));
+		} else {
+			// 𝜈: imm
+			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.IMMUTABLE));
+			Expression constant = SpoonToRjTranslator.toRjLiteral(literal);
+			if (constant != null) {
+				// 𝜑 ∧ (𝜈 == 𝑐)
+				refPath.addExpression(new BinaryExpression(new Var(sv.toString()), BinaryOperator.EQ, constant));
+			}
+		}
 
 		// Store the symbolic value in metadata
 		literal.putMetadata(EVAL_KEY, sv);
