@@ -7,11 +7,12 @@ import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
 import rj_language.ast.UnaryOperator;
+import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.UnaryOperatorKind;
 
 public class SpoonToRjTranslator {
-	public static BinaryOperator toRjBinaryOperator(spoon.reflect.code.BinaryOperatorKind kind) {
+	public static BinaryOperator toRjBinaryOperator(BinaryOperatorKind kind) {
 		return switch (kind) {
 			case OR -> BinaryOperator.OR;
 			case AND -> BinaryOperator.AND;
