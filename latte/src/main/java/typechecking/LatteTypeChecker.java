@@ -23,6 +23,8 @@ import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.CtLocalVariable;
 import spoon.reflect.code.CtReturn;
+import spoon.reflect.code.CtThisAccess;
+import spoon.reflect.code.CtTypeAccess;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.declaration.CtClass;
@@ -33,8 +35,6 @@ import spoon.reflect.declaration.CtParameter;
 import spoon.reflect.reference.CtFieldReference;
 import spoon.reflect.reference.CtLocalVariableReference;
 import spoon.reflect.reference.CtTypeReference;
-import spoon.support.reflect.code.CtThisAccessImpl;
-import spoon.support.reflect.code.CtVariableReadImpl;
 import spoon.support.reflect.code.CtVariableWriteImpl;
 
 /**
@@ -255,9 +255,27 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * EvalField
-		Δ(𝑥) = 𝜈   Δ(𝜈.𝑓 ) = 𝜈′   Σ(𝜈) ≠ ⊥   Σ(𝜈′) ≠ ⊥
+		Δ(𝑥) = 𝜈   Δ(𝜈.𝑓) = 𝜈′   Σ(𝜈) ≠ ⊥   Σ(𝜈′) ≠ ⊥
 		----------------------------------------------
-		Γ; Δ; Σ ⊢ 𝑥 .𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ
+		Γ; Δ; Σ ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ
+
+		EvalUniqueOrBorrowedField
+		Δ(𝑥) = 𝜈
+		Σ(𝜈) ∈ {unique, borrowed, free}
+		𝜈.𝑓 ∉ Δ
+		field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+		fresh 𝜈′
+		--------------------------------------------------
+		Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
+
+		EvalSharedField
+		Δ(𝑥) = 𝜈
+		shared ≤ Σ(𝜈)
+		𝜈.𝑓 ∉ Δ
+		field(Γ(𝑥), 𝑓) = shared 𝐶
+		fresh 𝜈′
+		------------------------------------------------------
+		Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′ , Δ; 𝜈′: shared, Σ; 𝜑
 	 */
 	@Override
 	public <T> void visitCtFieldRead(CtFieldRead<T> fieldRead) {
@@ -266,72 +284,59 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		super.visitCtFieldRead(fieldRead);
 		CtExpression<?> target = fieldRead.getTarget();
-		CtFieldReference<?> f = fieldRead.getVariable();
+		if (target instanceof CtTypeAccess<?>) {
+			// To avoid evaluation problems with external Java APIs (System.out.println, etc), we treat static fields as a special case and assign them a fresh symbolic value with shared permission, as it's the least restrictive and allows us to use external APIs without assuming ownership of their values.
+			SymbolicValue staticFieldValue = symbEnv.getFresh();
+			permEnv.add(staticFieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
+			fieldRead.putMetadata(EVAL_KEY, staticFieldValue);
+			loggingSpaces--;
+			return;
+		}
 
-		if ( target instanceof CtVariableReadImpl || target instanceof CtThisAccessImpl){
-			SymbolicValue v;
-			CtTypeReference<?> type = target.getType();
-			v = (target instanceof CtVariableReadImpl) ? 
-				symbEnv.get(((CtVariableReadImpl<?>)target).getVariable().getSimpleName()) : 
-				symbEnv.get(THIS);
+		String name = getValueOrLog(receiverName(target), fieldRead, "Receiver name for field access not found for target %s");
 
-			// Δ(𝑥) = 𝜈 
-			UniquenessAnnotation permV = permEnv.get(v);
-			SymbolicValue vv = symbEnv.get(v, f.getSimpleName());
-			// EVAL UNIQUE FIELD
+		// Δ(𝑥) = 𝜈
+		SymbolicValue receiverValue = getValueOrLog(symbEnv.get(name), fieldRead, "Symbolic value for field receiver %s not found");
+
+		// Σ(𝜈) ≠ ⊥
+		UniquenessAnnotation receiverPerm = getValueOrLog(permEnv.get(receiverValue), fieldRead, "Permission for field receiver not found");
+		if (receiverPerm.isBottom()) {
+			logError(String.format("%s:%s is not accepted in field evaluation", receiverValue, receiverPerm), fieldRead);
+		}
+
+		// Δ(𝜈.𝑓) = 𝜈′
+		String fieldName = fieldRead.getVariable().getSimpleName();
+		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
+
+		if (fieldValue == null) {
 			// 𝜈.𝑓 ∉ Δ
-			if ( permV.isGreaterEqualThan(Uniqueness.UNIQUE) && vv == null) {
-				//field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶
-				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
-				if (fieldUA == null) logError(String.format("field annotation not found for %s", f.getSimpleName()), fieldRead);
-				//----------------
-				//𝜈.𝑓 : 𝜈′, Δ; 𝜈′: 𝛼, Σ   fresh 𝜈
-				vv = symbEnv.addField(v, f.getSimpleName());
-				permEnv.add(vv, fieldUA);
+			UniquenessAnnotation declaredFieldPerm = getValueOrLog(maps.getFieldAnnotation(fieldName, target.getType()), fieldRead, "Declared permission for field %s not found");
 
-				// 𝑥 .𝑓 ⇓ 𝜈′
-				fieldRead.putMetadata(EVAL_KEY, vv);
-				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
-			// EVAL SHARED FIELD
-			} else if ( permV.isGreaterEqualThan(Uniqueness.SHARED) && vv == null){
-				// field(Γ(𝑥), 𝑓 ) = shared 𝐶
-				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
-				if (!fieldUA.isShared()){
-					logError(String.format("Field %s is not shared but %s is", f.getSimpleName(), v), fieldRead);
-				} else {
-					// 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ
-					vv = symbEnv.addField(v, f.getSimpleName());
-					permEnv.add(vv, fieldUA);
-					fieldRead.putMetadata(EVAL_KEY, vv);
-					logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
-				}
+			// Σ(𝜈) ∈ {unique, borrowed, free}
+			if (receiverPerm.isFree() || receiverPerm.isUnique() || receiverPerm.annotationEquals(Uniqueness.BORROWED)) {
+				// EvalUniqueOrBorrowedField
+				fieldValue = symbEnv.addField(receiverValue, fieldName);
+				permEnv.add(fieldValue, declaredFieldPerm);
+			// shared ≤ Σ(𝜈)
+			} else if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
+				// EvalSharedField
+				fieldValue = symbEnv.addField(receiverValue, fieldName);
+				permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
 			} else {
-				//EVAL FIELD
-				// Σ(𝜈) ≠ ⊥ 
-				if (permV.isBottom()){
-					logError(
-						String.format("%s:%s is not accepted in field evaluation", v, permV)
-						, fieldRead);
-				}
-				
-				// Δ(𝜈.𝑓 ) = 𝜈′, if not present, add it 
-				if (vv == null){
-					symbEnv.addField(vv, f.getSimpleName());
-					logError(String.format("Could not find symbolic value for %s.%s", v, f.getSimpleName())
-						, fieldRead);
-				}
-
-				// Σ(𝜈′) ≠ ⊥
-				UniquenessAnnotation permVV = permEnv.get(vv);
-				if (permVV.isBottom()){
-					logError(
-						String.format("%s:%s is not accepted in field evaluation", vv, permVV)
-						, fieldRead);
-				}
-				fieldRead.putMetadata(EVAL_KEY, vv);
-				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
+				logError(
+					String.format("Receiver with permission %s cannot access non-shared field %s", receiverPerm, fieldName),
+					fieldRead);
 			}
-		} 
+		}
+
+		// Σ(𝜈′) ≠ ⊥
+		UniquenessAnnotation fieldPerm = getValueOrLog(permEnv.get(fieldValue), fieldRead, "Permission for field %s not found");
+		if (fieldPerm.isBottom()) {
+			logError(String.format("%s:%s is not accepted in field evaluation", fieldValue, fieldPerm), fieldRead);
+		}
+
+		fieldRead.putMetadata(EVAL_KEY, fieldValue);
+		logInfo(String.format("%s.%s: %s", receiverValue, fieldName, fieldValue));
 		loggingSpaces--;
 	}
 
@@ -339,28 +344,47 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	 * Visit a field write as a field assignment
 	 * 
 	 * CheckFieldAssign
-	 * field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶 Γ ⊢ 𝑒 : 𝐶 Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′
-	 * Γ; Δ′; Σ′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′ Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′ Δ′′ [𝜈.𝑓 ↦ → 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
-	 * --------------------------------------------------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑥 .𝑓 = 𝑒; ⊣ Γ; Δ′′′; Σ′′′′
+	 *  field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+	 *	Γ ⊢ 𝑒 : 𝐶
+	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
+	 *	Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
+	 *	Σ′′ ⊢ 𝜈′: 𝛼 ⊣ Σ′′′
+	 *	Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 *  -------------------------------------------------
+	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 = 𝑒; ⊣ Γ; Δ′′′; Σ′′′′; 𝜑′′
+
+	 * only Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′ is checked here
 	 */
 	@Override
 	public <T> void visitCtFieldWrite(CtFieldWrite<T> fieldWrite) {
 		logInfo("Visiting field write <"+ fieldWrite.toStringDebug()+">", fieldWrite);
 		super.visitCtFieldWrite(fieldWrite);
-		CtExpression<?> ce = fieldWrite.getTarget();
-		if (ce instanceof CtVariableReadImpl){
-			CtVariableReadImpl<?> x = (CtVariableReadImpl<?>) ce;
-			SymbolicValue v = symbEnv.get(x.getVariable().getSimpleName());
-			ce.putMetadata(EVAL_KEY, v);
-			logInfo(x.getVariable().getSimpleName() + ": "+ v);
-		} else if (ce instanceof CtThisAccessImpl){
-			SymbolicValue v = symbEnv.get(THIS);
-			ce.putMetadata(EVAL_KEY, v);
-			logInfo("this: "+ v);
+
+		CtExpression<?> target = fieldWrite.getTarget();
+		String name;
+		if (target instanceof CtVariableRead<?> variableRead) {
+			name = variableRead.getVariable().getSimpleName();
+		} else if (target instanceof CtThisAccess<?>) {
+			name = THIS;
 		} else {
-			logError("Field write target not found", fieldWrite);
+			logError("Receiver for field write is not supported: " + target.toStringDebug(), fieldWrite);
+			return;
 		}
+		// Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
+		SymbolicValue receiverValue = getValueOrLog(symbEnv.get(name), fieldWrite, "Symbolic value for field receiver %s not found");
+
+		target.putMetadata(EVAL_KEY, receiverValue);
+		logInfo(String.format("%s: %s", name, receiverValue));
+	}
+
+	private String receiverName(CtExpression<?> target) {
+		if (target instanceof CtVariableRead<?> variableRead) {
+			return variableRead.getVariable().getSimpleName();
+		}
+		if (target instanceof CtThisAccess<?>) {
+			return THIS;
+		}
+		return null;
 	}
 
 	/**
@@ -731,5 +755,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		if (prePredicate != null) {
 			refPath.addExpression(prePredicate);
 		}
+	}
+
+	private <T> T getValueOrLog(T value, CtElement element, String message, Object... args) {
+		if (value == null) {
+			logError(String.format(message, args), element);
+		}
+		return value;
 	}
 }
