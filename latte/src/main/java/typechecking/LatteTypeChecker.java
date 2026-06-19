@@ -388,24 +388,27 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	}
 
 	/**
-	 * Visit CTAssignment that can have a call, a new object, or an expression assignment
-	 * Rules: CheckVarAssign + CheckNew + CheckCall
+	 * Visit CTAssignment that can have a variable assignment or a field assignment
+	 * Rules: CheckVarAssign + CheckFieldAssign
 	 * 
 	 * CheckVarAssign
-	 * Γ(𝑥) = 𝐶 Γ ⊢ 𝑒 : 𝐶 Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′ Δ′ [𝑥 ↦ → 𝜈]; Σ′ ⪰ Δ′′; Σ′′
-	 * ------------------------------------------------------------------------
-	 *             Γ; Δ; Σ ⊢ 𝑥 = 𝑒; ⊣ Γ; Δ′′; Σ′′
+	 * Γ(𝑥) = 𝐶 
+	 * Γ ⊢ 𝑒 : 𝐶 
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
+	 * Δ′ [𝑥 ↦ → 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+	 * ------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥 = 𝑒; ⊣ Γ; Δ′′; Σ′′; 𝜑′
 	 * 
 	 * 
-	 * CheckNew
-	 * ctor(𝐶) = 𝐶 (𝛼1 𝐶1 𝑥1, ..., 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
-	 * Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒1, ..., 𝑒𝑛 : 𝐶1, ... , 𝐶𝑛
-	 * Γ; Δ; Σ ⊢ 𝑒1, ... , 𝑒𝑛 ⇓ 𝜈1, ... , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ Σ′ ⊢ 𝑒1, ... , 𝑒𝑛 : 𝛼1, ... , 𝛼𝑛 ⊣ Σ′′
-	 * distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
-	 * Δ′ [𝑦 ↦ → 𝜈′]; Σ′′ [𝜈 ↦ → free] ⪰ Δ′′; Σ′′′
-	 * ------------------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑦 = new 𝐶 (𝑒1, ..., 𝑒𝑛 ); ⊣ Γ; Δ′′; Σ′′′
-	 * 
+	 * CheckFieldAssign
+	 *  field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+	 *  Γ ⊢ 𝑒 : 𝐶
+	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
+	 *	Γ; Δ′; Σ′; 𝜑 ′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑 ′′
+	 *	Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
+	 *	Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 *  -------------------------------------------------
+	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 = 𝑒 ; ⊣ Γ; Δ′′′; Σ′′′′; 𝜑′′
 	 */
 	@Override
 	public <T, A extends T> void visitCtAssignment(CtAssignment<T, A> assignment) {
@@ -416,53 +419,33 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		CtExpression<?> assignee = assignment.getAssigned();
 		CtExpression<?> value = assignment.getAssignment();
 
-		if ( assignee instanceof CtVariableWriteImpl ){
-			CtVariableWriteImpl<?> var = (CtVariableWriteImpl<?>) assignee;
-			SymbolicValue targetSV = (SymbolicValue) value.getMetadata(EVAL_KEY);
-			Object metadata = value.getMetadata(EVAL_KEY);
-			if (metadata != null){
-				SymbolicValue valueSV = (SymbolicValue) metadata;
-
-				UniquenessAnnotation valuePerm = permEnv.get(valueSV);
-				UniquenessAnnotation targetPerm = permEnv.get(targetSV);
-				if (!permEnv.usePermissionAs(valueSV, valuePerm, targetPerm))
-					logError(String.format("Expected %s but got %s", targetPerm, valuePerm, value), value);
-
-				SymbolicValue fresh = symbEnv.addVariable(var.getVariable().getSimpleName());
-				permEnv.add(fresh, targetPerm);
-			} else {
-				logError("BUG: Missing metadata for the assignment", var);
-			}
 		// Variable Assignment - CheckVarAssign
-		} else if (assignee instanceof CtVariableWriteImpl){
-			SymbolicValue v = (SymbolicValue) value.getMetadata(EVAL_KEY);
-			if (v == null)
-				logError("Symbolic value for assignment not found", assignment);
-			symbEnv.addVarSymbolicValue(assignee.toString(), v);
+		if (assignee instanceof CtVariableWriteImpl){
+			CtVariableWriteImpl<?> var = (CtVariableWriteImpl<?>) assignee;
+        	// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
+			SymbolicValue valueSV = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for assignment value not found");
+
+			// Δ′[𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+			symbEnv.addVarSymbolicValue(var.getVariable().getSimpleName(), valueSV);
 
 		// Field Assignment - CheckFieldAssign
 		} else if (assignee instanceof CtFieldWrite){
 			CtFieldWrite<?> fieldWrite = (CtFieldWrite<?>) assignee;
-			logInfo("Visiting field write <"+ fieldWrite.toStringDebug()+">");
-	
 			CtExpression<?> x = fieldWrite.getTarget();
 			CtFieldReference<?> f = fieldWrite.getVariable();
-			CtTypeReference<?> ct = x.getType();
-			// field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶
-			UniquenessAnnotation fieldPerm = maps.getFieldAnnotation(f.getSimpleName(), ct);
+
+			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+			UniquenessAnnotation fieldPerm = getValueOrLog(maps.getFieldAnnotation(f.getSimpleName(), x.getType()), assignment, "Field annotation not found for " + f.getSimpleName());
 	
-			// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′
-			SymbolicValue vv = (SymbolicValue) value.getMetadata(EVAL_KEY);
-			// Γ; Δ′; Σ′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′
-			SymbolicValue v = (SymbolicValue) x.getMetadata(EVAL_KEY); 
+        	// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
+			SymbolicValue vv = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for field assignment value not found");
+
+			// Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
+			SymbolicValue v = getValueOrLog((SymbolicValue) x.getMetadata(EVAL_KEY), assignment, "Symbolic value for field receiver not found");
 
 			// Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
 			UniquenessAnnotation vvPerm = permEnv.get(vv);
-
-			// Check if we can use the permission of vv as the permission of the field
-			if (!permEnv.usePermissionAs(vv, vvPerm, fieldPerm))
-				logError(String.format("Expected %s but got %s", 
-					fieldPerm, vvPerm), assignment);
+			if (!permEnv.usePermissionAs(vv, vvPerm, fieldPerm)) logError(String.format("Expected %s but got %s", fieldPerm, vvPerm), assignment);
 
 			// Δ′′ [𝜈.𝑓 → 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
 			symbEnv.addFieldSymbolicValue(v, f.getSimpleName(), vv);
@@ -504,7 +487,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	private void handleConstructorArgs (CtConstructorCall<?> constCall){
 		CtClass<?> klass = maps.getClassFrom(constCall.getType());
 		int paramSize = constCall.getArguments().size();
-		CtConstructor<?> c = maps.geCtConstructor(klass, paramSize);
+		CtConstructor<?> c = maps.getCtConstructor(klass, paramSize);
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
 		if (klass == null || c == null){
 			logInfo(String.format("Cannot find the constructor for {} in the context", constCall.getType()), constCall);
