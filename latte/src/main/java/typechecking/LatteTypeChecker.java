@@ -13,6 +13,8 @@ import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
+import rj_language.ast.Var;
+import rj_language.visitors.SubstitutionVisitor;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtConstructorCall;
@@ -590,23 +592,66 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		joining(thenSymbEnv, thenPermEnv, elseSymbEnv, elsePermEnv);
 	}
 
+	/**
+	 * T-Method
+	 *  Γ2; Δ2; Σ2; 𝜑2 ⊢ 𝑥𝑟 ⇓ 𝜈𝑟 ⊣ Γ3; Δ3; Σ3; 𝜑3
+	 *  Σ3 ⊢ 𝜈𝑟 : 𝛼 ⊣ Σ4
+	 *  Γ3 ⊢ 𝑥𝑟 : 𝐶
+	 *  Γ3; Δ3; Σ4; 𝜑3 ⊢ 𝑂𝜌𝑝𝑜𝑠𝑡 ⇓ 𝜌′𝑝𝑜𝑠𝑡 ⊣ Γ4; Δ4; Σ5; 𝜑4
+	 *  Γ4; Δ4; Σ5; 𝜑4 ⊢ 𝑆𝑀𝑇𝜌′𝑝𝑜𝑠𝑡[𝜈𝑟/𝑟𝑒𝑠𝑢𝑙t]
+	 */
 	@Override
 	public <R> void visitCtReturn(CtReturn<R> returnStatement) {
 		logInfo("Visiting return <"+ returnStatement.toStringDebug()+">", returnStatement);
 		super.visitCtReturn(returnStatement);
 
-		CtExpression<?> returned = returnStatement.getReturnedExpression();
-		if (returned == null) return;
-		SymbolicValue vRet = (SymbolicValue) returned.getMetadata(EVAL_KEY);
-		if (vRet == null) logError("Symbolic value for return not found:"+returned.toStringDebug(), returned);
-		UniquenessAnnotation ua = permEnv.get(vRet);
-
 		CtMethod<?> cmet = returnStatement.getParent(CtMethod.class);
+		RefinementContract rc = (RefinementContract) cmet.getMetadata(Constants.METHOD_CONTRACT_KEY);
+		Expression post = rc == null ? null : rc.getTo();
+
+		CtExpression<?> returned = returnStatement.getReturnedExpression();
+
+		// T-Method-void return type, result can't appear in postcondition
+		if (returned == null) {
+			if (post != null) {
+				Expression evaluated = evaluator.evalPredicate(post);
+				// Solve the post condition and check if it is satisfiable
+			}
+			return;
+		}
+
+		// T-Method 
+		// Γ2; Δ2; Σ2; 𝜑2 ⊢ 𝑥𝑟 ⇓ 𝜈𝑟 ⊣ Γ3; Δ3; Σ3; 𝜑3
+		SymbolicValue vRet = getValueOrLog((SymbolicValue) returned.getMetadata(EVAL_KEY), returnStatement, "Symbolic value for return expression not found");
+
+		// Σ3 ⊢ 𝜈𝑟 : 𝛼 ⊣ Σ4
+		UniquenessAnnotation ua = permEnv.get(vRet);
 		UniquenessAnnotation expectedUA = new UniquenessAnnotation(cmet);
 	
 		if(!permEnv.usePermissionAs(vRet, ua, expectedUA)){
-			logError(String.format("Expected %s but got %s in return %s", 
-				expectedUA, ua, returnStatement.toString()), returned);
+			logError(String.format("Expected %s but got %s in return %s", expectedUA, ua, returnStatement.toString()), returned);
+		}
+
+		// Γ3 ⊢ 𝑥𝑟 : 𝐶
+		CtTypeReference<?> declaredReturnType = cmet.getType();
+		CtClass<?> declaredClass = maps.getClassFrom(declaredReturnType);
+		// Null return types are legal in Java, but we cannot check the subtype relationship.
+		if (declaredClass != null) {
+			CtTypeReference<?> actualReturnType = returned.getType();
+			if (!actualReturnType.getQualifiedName().equals("null")) {
+				CtClass<?> actualClass = maps.getClassFrom(actualReturnType);
+				if (actualClass != null && !actualReturnType.isSubtypeOf(declaredReturnType)) {
+					logError(String.format("Return type mismatch: expected %s but got %s", declaredReturnType, actualReturnType), returned);
+				}
+			}
+		}
+
+
+		// Γ3; Δ3; Σ4; 𝜑3 ⊢ 𝑂𝜌𝑝𝑜𝑠𝑡 ⇓ 𝜌′𝑝𝑜𝑠𝑡 ⊣ Γ4; Δ4; Σ5; 𝜑4
+		if (post != null) {
+			Expression substituted = post.accept(new SubstitutionVisitor("return", new Var(vRet.toString())));
+			Expression evaluated = evaluator.evalPredicate(substituted);
+			// Solve the post condition and check if it is satisfiable
 		}
 	}
 
@@ -757,5 +802,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		if (prePredicate != null) {
 			refPath.addExpression(prePredicate);
 		}
+	}
+	
+	private <T> T getValueOrLog(T value, CtElement element, String message, Object... args) {
+		if (value == null) {
+			logError(String.format(message, args), element);
+		}
+		return value;
 	}
 }
