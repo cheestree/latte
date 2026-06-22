@@ -181,7 +181,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			typeEnv.add("this", writerType);
 			typeEnv.add("sink", readerType);
 			Evaluator evaluator = new Evaluator(maps, typeEnv, symbEnv, permEnv, refinementPath);
-			result = evaluator.evalPredicate(connectPrecondition);
+			result = evaluator.eval(connectPrecondition);
 		}
 
 		@Test
