@@ -94,23 +94,6 @@ public class Evaluator {
 		return value;
 	}
 
-	/**
-	 * EvalField
-	 * Δ(𝑥) = 𝜈 Δ(𝜈.𝑓) = 𝜈′ Σ(𝜈) ≠ ⊥ Σ(𝜈′) ≠ ⊥
-	 * ------------------------------------------
-	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ; 𝜑
-	 * 
-	 * EvalUniqueOrBorrowedField
-	 * Δ(𝑥) = 𝜈 Σ(𝜈) ∈ {unique, borrowed, free} 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = 𝛼 𝐶 fresh 𝜈′
-	 *	----------------------------------------------------------------------------
-	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
-	 *
-	 * EvalSharedField
-	 * Δ(𝑥) = 𝜈 shared ≤ Σ(𝜈) 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′ 
-	 * ------------------------------------------------------
-	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
-	 * 
-	 */
 	private SymbolicValue evalFieldValue(FieldAccess fieldAccess) {
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
@@ -131,39 +114,73 @@ public class Evaluator {
 		String fieldName = fieldAccess.getField();
 		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
 
-		if (fieldValue == null) {
-			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
-			CtTypeReference<?> receiverType = typeEnv.get(receiverName);
-			if (receiverType == null) {
-				throw new IllegalStateException("Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
-			}
-			// field(Γ(x),f) = 𝛼 𝐶
-			UniquenessAnnotation declaredFieldPerm = maps.getFieldAnnotation(fieldName, receiverType);
-			if (declaredFieldPerm == null) {
-				throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
-			}
-
-			// EvalUniqueOrBorrowedField
-			if (isExclusiveReceiver(receiverPerm)) {
-				// field(Γ(𝑥), 𝑓) = 𝛼 𝐶 fresh 𝜈′
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, declaredFieldPerm);
-			// EvalSharedField
-			} else if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
-				// field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
-			} else {
-				throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
-			}
+		if (fieldValue != null) {
+			return evalField(receiverName, fieldName, fieldValue);
 		}
 
+		// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+		CtTypeReference<?> receiverType = typeEnv.get(receiverName);
+		if (receiverType == null) {
+			throw new IllegalStateException("Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
+		}
+		UniquenessAnnotation declaredFieldPerm = maps.getFieldAnnotation(fieldName, receiverType);
+		if (declaredFieldPerm == null) {
+			throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
+		}
+
+		if (isExclusiveReceiver(receiverPerm)) {
+			return evalUniqueOrBorrowedField(receiverName, receiverValue, fieldName, declaredFieldPerm);
+		}
+		if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
+			return evalSharedField(receiverName, receiverValue, fieldName);
+		}
+		throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
+	}
+
+	/**
+	 * EvalField
+	 * Δ(𝑥) = 𝜈 Δ(𝜈.𝑓) = 𝜈′ Σ(𝜈) ≠ ⊥ Σ(𝜈′) ≠ ⊥
+	 * ------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ; 𝜑
+	 */
+	private SymbolicValue evalField(String receiverName, String fieldName, SymbolicValue fieldValue) {
 		// Σ(𝜈′) ≠ ⊥
 		UniquenessAnnotation fieldPerm = permEnv.getOrThrow(fieldValue, "field " + receiverName + "." + fieldName);
 		if (fieldPerm.isBottom()) {
 			throw new IllegalStateException("Field is inaccessible in evaluation: " + receiverName + "." + fieldName);
 		}
 		return fieldValue;
+	}
+
+	/**
+	 * EvalUniqueOrBorrowedField
+	 * Δ(𝑥) = 𝜈 Σ(𝜈) ∈ {unique, borrowed, free} 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = 𝛼 𝐶 fresh 𝜈′
+	 * ----------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
+	 */
+	private SymbolicValue evalUniqueOrBorrowedField(
+			String receiverName,
+			SymbolicValue receiverValue,
+			String fieldName,
+			UniquenessAnnotation declaredFieldPerm) {
+		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
+		permEnv.add(fieldValue, declaredFieldPerm);
+		return evalField(receiverName, fieldName, fieldValue);
+	}
+
+	/**
+	 * EvalSharedField
+	 * Δ(𝑥) = 𝜈 shared ≤ Σ(𝜈) 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′
+	 * ------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
+	 */
+	private SymbolicValue evalSharedField(
+			String receiverName,
+			SymbolicValue receiverValue,
+			String fieldName) {
+		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
+		permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
+		return evalField(receiverName, fieldName, fieldValue);
 	}
 
 	/**
