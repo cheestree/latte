@@ -30,7 +30,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 
 			Expression result = evaluator.eval(RefinementsParser.createAST("x"));
 
-			assertPrints(result, x.toString());
+			assertExpressionEquals(result, x.toString());
 		}
 	
 		@Test
@@ -72,7 +72,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 
 			Expression result = evaluator.eval(RefinementsParser.createAST("x.isConnected"));
 
-			assertPrints(result, field.toString());
+			assertExpressionEquals(result, field.toString());
 		}
 
 		@Test
@@ -83,7 +83,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			Expression result = evaluator.eval(RefinementsParser.createAST("x.isConnected"));
 
 			SymbolicValue field = symbEnv.get(x, "isConnected");
-			assertPrints(result, field.toString());
+			assertExpressionEquals(result, field.toString());
 			assertImmutable(field);
 		}
 
@@ -177,7 +177,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 		@Test
 		void flattensToSingleSymbolicValue() {
 			assertInstanceOf(Var.class, result);
-			assertPrintsMatching(result, "𝜈\\d+");
+			assertExpressionMatches(result, "𝜈\\d+");
 		}
 
 		@Test

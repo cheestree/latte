@@ -20,9 +20,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 
 		Expression result = evaluator.eval(RefinementsParser.createAST(source));
 
-		assertPrints(result, "𝜈0");
+		assertExpressionEquals(result, "𝜈0");
 		assertImmutable(0);
-		assertPrints(refinementPath.toConjunct(), "𝜈0 == " + expectedLiteral);
+		assertPathEquals("𝜈0 == " + expectedLiteral);
 	}
 
 	@ParameterizedTest
@@ -32,9 +32,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 
 		Expression result = evaluator.eval(RefinementsParser.createAST(source));
 
-		assertPrints(result, "𝜈1");
+		assertExpressionEquals(result, "𝜈1");
 		assertImmutable(1);
-		assertPrints(refinementPath.toConjunct(), expectedPathCondition);
+		assertPathEquals(expectedPathCondition);
 	}
 
 	@ParameterizedTest
@@ -44,9 +44,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 
 		Expression result = evaluator.eval(RefinementsParser.createAST(source));
 
-		assertPrints(result, "𝜈2");
+		assertExpressionEquals(result, "𝜈2");
 		assertImmutable(2);
-		assertPrints(refinementPath.toConjunct(), expectedPathCondition);
+		assertPathEquals(expectedPathCondition);
 	}
 
 	private static Stream<Arguments> literalExpressions() {

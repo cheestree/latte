@@ -38,12 +38,16 @@ abstract class EvaluatorTestSupport {
         symbEnv.exitScope();
     }
 
-    protected void assertPrints(Expression expression, String expected) {
+    protected void assertExpressionEquals(Expression expression, String expected) {
         assertEquals(expected, ExpressionPrettyPrinter.print(expression));
     }
 
-    protected void assertPrintsMatching(Expression expression, String regex) {
+    protected void assertExpressionMatches(Expression expression, String regex) {
         assertTrue(ExpressionPrettyPrinter.print(expression).matches(regex));
+    }
+
+    protected void assertPathEquals(String expected) {
+        assertEquals(expected, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
     }
 
     protected long countPrintedOccurrences(Expression expression, SymbolicValue value) {
