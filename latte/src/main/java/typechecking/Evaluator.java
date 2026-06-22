@@ -42,7 +42,7 @@ public class Evaluator {
 		this.refinementPath = refinementPath;
 	}
 
-	public Expression evalPredicate(Expression predicate) {
+	public Expression eval(Expression predicate) {
 		if (predicate == null) {
 			return null;
 		}

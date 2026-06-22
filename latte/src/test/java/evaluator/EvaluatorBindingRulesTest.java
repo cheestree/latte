@@ -28,7 +28,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			SymbolicValue x = addVariable("x", Uniqueness.BORROWED);
 			Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, refinementPath);
 
-			Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x"));
+			Expression result = evaluator.eval(RefinementsParser.createAST("x"));
 
 			assertPrints(result, x.toString());
 		}
@@ -37,7 +37,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 		void rejectsUnknownVariable() {
 			Evaluator missingEvaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.evalPredicate(RefinementsParser.createAST("missing")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.eval(RefinementsParser.createAST("missing")));
 			assertEquals("Unknown symbolic value for variable missing", ex.getMessage());
 		}
 
@@ -46,7 +46,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			symbEnv.addVariable("x");
 			Evaluator missingEvaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.evalPredicate(RefinementsParser.createAST("x")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.eval(RefinementsParser.createAST("x")));
 			assertEquals("Missing permission for variable x", ex.getMessage());
 		}
 
@@ -56,7 +56,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			permEnv.add(symbEnv.get("x"), new UniquenessAnnotation(Uniqueness.BOTTOM));
 			Evaluator missingEvaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.evalPredicate(RefinementsParser.createAST("x")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.eval(RefinementsParser.createAST("x")));
 			assertEquals("Variable is inaccessible in evaluation: x", ex.getMessage());
 		}
 	}
@@ -70,7 +70,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			permEnv.add(field, new UniquenessAnnotation(Uniqueness.IMMUTABLE));
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
+			Expression result = evaluator.eval(RefinementsParser.createAST("x.isConnected"));
 
 			assertPrints(result, field.toString());
 		}
@@ -80,7 +80,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			SymbolicValue x = addVariable("x", Uniqueness.FREE);
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Expression result = evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected"));
+			Expression result = evaluator.eval(RefinementsParser.createAST("x.isConnected"));
 
 			SymbolicValue field = symbEnv.get(x, "isConnected");
 			assertPrints(result, field.toString());
@@ -92,7 +92,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, refinementPath);
 			Expression fieldAccess = new FieldAccess(new FieldAccess(new Var("x"), "inner"), "isConnected");
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(fieldAccess));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(fieldAccess));
 			assertTrue(ex.getMessage().startsWith("Only variable receivers are supported in evaluation: "));
 		}
 
@@ -100,7 +100,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 		void rejectsUnknownReceiverVariable() {
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
 			assertEquals("Unknown symbolic value for variable x", ex.getMessage());
 		}
 
@@ -109,7 +109,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			symbEnv.addVariable("x");
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
 			assertEquals("Missing permission for receiver x", ex.getMessage());
 		}
 
@@ -118,7 +118,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			addVariable("x", Uniqueness.BOTTOM);
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
 			assertEquals("Receiver is inaccessible in evaluation: x", ex.getMessage());
 		}
 
@@ -127,7 +127,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			addVariable("x", Uniqueness.BORROWED);
 			Evaluator evaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
 			assertEquals("Missing type for receiver x when evaluating x.isConnected", ex.getMessage());
 		}
 
@@ -136,7 +136,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			addVariable("x", Uniqueness.BORROWED);
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.unknown")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.unknown")));
 			assertEquals("Unknown field unknown on type " + writerType, ex.getMessage());
 		}
 
@@ -147,7 +147,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			permEnv.add(field, new UniquenessAnnotation(Uniqueness.BOTTOM));
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
 			assertEquals("Field is inaccessible in evaluation: x.isConnected", ex.getMessage());
 		}
 
@@ -156,7 +156,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			addVariable("x", Uniqueness.SHARED);
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
-			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.evalPredicate(RefinementsParser.createAST("x.isConnected")));
+			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
 			assertEquals("Receiver x with permission SHARED cannot access non-shared field isConnected", ex.getMessage());
 		}
 	}
@@ -171,7 +171,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			thisValue = addVariable("this", Uniqueness.BORROWED);
 			sink = addVariable("sink", Uniqueness.BORROWED);
 			Evaluator evaluator = new Evaluator(maps, Map.of("this", writerType, "sink", readerType), symbEnv, permEnv, refinementPath);
-			result = evaluator.evalPredicate(connectPrecondition);
+			result = evaluator.eval(connectPrecondition);
 		}
 
 		@Test
