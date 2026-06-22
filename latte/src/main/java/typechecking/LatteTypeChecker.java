@@ -734,7 +734,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	}
 
 	private void evaluateAndAssumePre(Expression pre) {
-		Expression prePredicate = evaluator.evalPredicate(pre);
+		Expression prePredicate = evaluator.eval(pre);
 		if (prePredicate != null) {
 			refPath.addExpression(prePredicate);
 		}
