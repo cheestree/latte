@@ -46,7 +46,7 @@ public class Evaluator {
 		if (predicate == null) {
 			return null;
 		}
-		SymbolicValue value = evalValue(predicate);
+		SymbolicValue value = evalExpression(predicate);
     	return new Var(value.toString());
 	}
 
@@ -55,7 +55,7 @@ public class Evaluator {
 	 * @param expression the predicate expression to evaluate
 	 * @return the evaluated expression, with variables and field accesses replaced by symbolic values
 	 */
-	private SymbolicValue evalValue(Expression expression) {
+	private SymbolicValue evalExpression(Expression expression) {
 		if (expression instanceof Var var) {
 			return evalVarValue(var);
 		}
@@ -183,7 +183,7 @@ public class Evaluator {
 	 */
 	private SymbolicValue evalUnaryValue(UnaryExpression unaryExpression) {
 		// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′
-		SymbolicValue operand = evalValue(unaryExpression.getExpression());
+		SymbolicValue operand = evalExpression(unaryExpression.getExpression());
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, new UnaryExpression(unaryExpression.getOperator(), new Var(operand.toString()))));
@@ -200,9 +200,9 @@ public class Evaluator {
 	 */
 	private SymbolicValue evalBinaryValue(BinaryExpression binaryExpression) {
 		// Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
-		SymbolicValue left = evalValue(binaryExpression.getLeft());
+		SymbolicValue left = evalExpression(binaryExpression.getLeft());
 		// Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈 2 ⊣ Δ2; Σ2; 𝜑2
-		SymbolicValue right = evalValue(binaryExpression.getRight());
+		SymbolicValue right = evalExpression(binaryExpression.getRight());
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		Expression symbolicOperation = new BinaryExpression(
