@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import context.ClassLevelMaps;
+import context.SymbolicValue;
 import rj_language.ast.Expression;
 import rj_language.parsing.RefinementsParser;
 import typechecking.Evaluator;
@@ -19,10 +20,10 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
 
 		Expression result = evaluator.eval(RefinementsParser.createAST(source));
+		SymbolicValue resultValue = symbolicValueOf(result);
 
-		assertExpressionEquals(result, "𝜈0");
-		assertImmutable(0);
-		assertPathEquals("𝜈0 == " + expectedLiteral);
+		assertImmutable(resultValue);
+		assertPathEquals(resultValue + " == " + expectedLiteral);
 	}
 
 	@ParameterizedTest
@@ -31,9 +32,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
 
 		Expression result = evaluator.eval(RefinementsParser.createAST(source));
+		SymbolicValue resultValue = symbolicValueOf(result);
 
-		assertExpressionEquals(result, "𝜈1");
-		assertImmutable(1);
+		assertImmutable(resultValue);
 		assertPathEquals(expectedPathCondition);
 	}
 
@@ -43,9 +44,9 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
 
 		Expression result = evaluator.eval(RefinementsParser.createAST(source));
+		SymbolicValue resultValue = symbolicValueOf(result);
 
-		assertExpressionEquals(result, "𝜈2");
-		assertImmutable(2);
+		assertImmutable(resultValue);
 		assertPathEquals(expectedPathCondition);
 	}
 

@@ -3,10 +3,10 @@ package evaluator;
 import java.util.Arrays;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
 
 import context.PermissionEnvironment;
 import context.RefinementPath;
@@ -15,6 +15,7 @@ import context.SymbolicValue;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
+import rj_language.ast.Var;
 import rj_language.visitors.ExpressionPrettyPrinter;
 
 abstract class EvaluatorTestSupport {
@@ -60,5 +61,13 @@ abstract class EvaluatorTestSupport {
 
     protected void assertImmutable(SymbolicValue value) {
         assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(value));
+    }
+
+    protected SymbolicValue symbolicValueOf(Expression expression) {
+        Var symbolicVariable = assertInstanceOf(Var.class, expression);
+        String prefix = "𝜈";
+        String name = symbolicVariable.getName();
+        assertTrue(name.startsWith(prefix));
+        return new SymbolicValue(Integer.parseInt(name.substring(prefix.length())));
     }
 }
