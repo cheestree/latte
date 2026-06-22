@@ -269,6 +269,20 @@ public class SymbolicEnvironment {
 	}
 
 	/**
+	 * Check if the variable is reachable from its name.
+	 * @param varName the name of the variable to check
+	 * @return the symbolic value of the variable if it is reachable.
+	 * @throws IllegalStateException if the variable is not reachable.
+	 */
+	public SymbolicValue getOrThrow(String varName) {
+		SymbolicValue value = get(varName);
+		if (value == null) {
+			throw new IllegalStateException("Unknown symbolic value for variable " + varName);
+		}
+		return value;
+	}
+
+	/**
 	 * Clone the symbolic environment at a certain moment in time
 	 * @return
 	 */

@@ -47,7 +47,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			Evaluator missingEvaluator = new Evaluator(maps, Map.of(), symbEnv, permEnv, refinementPath);
 
 			Throwable ex = assertThrows(IllegalStateException.class, () -> missingEvaluator.eval(RefinementsParser.createAST("x")));
-			assertEquals("Missing permission for variable x", ex.getMessage());
+			assertEquals("Missing permission for symbolic value 𝜈0 when evaluating variable x", ex.getMessage());
 		}
 
 		@Test
@@ -110,7 +110,7 @@ public class EvaluatorBindingRulesTest extends EvaluatorBaseTest {
 			Evaluator evaluator = new Evaluator(maps, Map.of("x", writerType), symbEnv, permEnv, refinementPath);
 
 			Throwable ex = assertThrows(IllegalStateException.class, () -> evaluator.eval(RefinementsParser.createAST("x.isConnected")));
-			assertEquals("Missing permission for receiver x", ex.getMessage());
+			assertEquals("Missing permission for symbolic value 𝜈0 when evaluating receiver x", ex.getMessage());
 		}
 
 		@Test
