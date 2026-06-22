@@ -18,7 +18,7 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	void evalLiteralCreatesFreshImmutableValueAndPathCondition(String source, String expectedLiteral) throws Exception {
 		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
 
-		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
+		Expression result = evaluator.eval(RefinementsParser.createAST(source));
 
 		assertPrints(result, "𝜈0");
 		assertImmutable(0);
@@ -30,7 +30,7 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	void evalUnaryCreatesFreshImmutableValueAndPathCondition(String source, String expectedPathCondition) throws Exception {
 		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
 
-		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
+		Expression result = evaluator.eval(RefinementsParser.createAST(source));
 
 		assertPrints(result, "𝜈1");
 		assertImmutable(1);
@@ -42,7 +42,7 @@ public class EvaluatorOperatorRulesTest extends EvaluatorTestSupport {
 	void evalBinaryCreatesFreshImmutableValueAndPathCondition(String source, String expectedPathCondition) throws Exception {
 		Evaluator evaluator = new Evaluator(new ClassLevelMaps(), Map.of(), symbEnv, permEnv, refinementPath);
 
-		Expression result = evaluator.evalPredicate(RefinementsParser.createAST(source));
+		Expression result = evaluator.eval(RefinementsParser.createAST(source));
 
 		assertPrints(result, "𝜈2");
 		assertImmutable(2);
