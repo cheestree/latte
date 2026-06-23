@@ -1,12 +1,11 @@
 package typechecking;
 
-import java.util.Map;
-
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
+import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.BinaryExpression;
@@ -23,14 +22,14 @@ import spoon.reflect.reference.CtTypeReference;
 
 public class Evaluator {
 	private final ClassLevelMaps maps;
-	private final Map<String, CtTypeReference<?>> typeEnv;
+	private final TypeEnvironment typeEnv;
 	private final SymbolicEnvironment symbEnv;
 	private final PermissionEnvironment permEnv;
 	private final RefinementPath refinementPath;
 
 	public Evaluator(
 		ClassLevelMaps maps,
-		Map<String, CtTypeReference<?>> typeEnv,
+		TypeEnvironment typeEnv,
 		SymbolicEnvironment symbEnv,
 		PermissionEnvironment permEnv,
 		RefinementPath refinementPath) {

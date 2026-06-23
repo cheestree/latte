@@ -6,6 +6,7 @@ import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.RefinementContract;
 import context.SymbolicEnvironment;
+import context.TypeEnvironment;
 import rj_language.ast.Expression;
 import rj_language.parsing.ParsingException;
 import rj_language.parsing.RefinementsParser;
@@ -21,8 +22,9 @@ import spoon.reflect.declaration.CtMethod;
 import utils.Constants;
 
 public class RefinementFirstPass extends LatteAbstractChecker {
-    public RefinementFirstPass(SymbolicEnvironment se, PermissionEnvironment pe, ClassLevelMaps mtc) {
-        super(se, pe, mtc);
+
+    public RefinementFirstPass(TypeEnvironment te, SymbolicEnvironment se, PermissionEnvironment pe, ClassLevelMaps mtc) {
+        super(te, se, pe, mtc);
         logInfo("[ Refinement Pass started ]");
         enterScopes();
     }

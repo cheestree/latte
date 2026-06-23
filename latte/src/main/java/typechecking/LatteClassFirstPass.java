@@ -3,6 +3,7 @@ package typechecking;
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
 import context.SymbolicEnvironment;
+import context.TypeEnvironment;
 import context.UniquenessAnnotation;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
@@ -13,9 +14,9 @@ import spoon.reflect.reference.CtTypeReference;
 
 public class LatteClassFirstPass extends LatteAbstractChecker {
 
-    public LatteClassFirstPass(SymbolicEnvironment se, PermissionEnvironment pe,
+    public LatteClassFirstPass(TypeEnvironment te, SymbolicEnvironment se, PermissionEnvironment pe,
             ClassLevelMaps mtc) {
-        super(se, pe, mtc);
+        super(te, se, pe, mtc);
         logInfo("[ First Class Pass started ]");
         enterScopes();
     }
