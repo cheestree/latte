@@ -19,7 +19,6 @@ import rj_language.ast.LiteralString;
 import rj_language.ast.UnaryExpression;
 import rj_language.ast.Var;
 import spoon.reflect.reference.CtTypeReference;
-import utils.Utils;
 
 public class Evaluator {
 	private final ClassLevelMaps maps;
@@ -41,11 +40,11 @@ public class Evaluator {
 		this.refinementPath = refinementPath;
 	}
 
-	public Expression evalPredicate(Expression predicate) {
+	public Expression eval(Expression predicate) {
 		if (predicate == null) {
 			return null;
 		}
-		SymbolicValue value = evalValue(predicate);
+		SymbolicValue value = evalExpression(predicate);
     	return new Var(value.toString());
 	}
 
@@ -54,7 +53,7 @@ public class Evaluator {
 	 * @param expression the predicate expression to evaluate
 	 * @return the evaluated expression, with variables and field accesses replaced by symbolic values
 	 */
-	private SymbolicValue evalValue(Expression expression) {
+	private SymbolicValue evalExpression(Expression expression) {
 		if (expression instanceof Var var) {
 			return evalVarValue(var);
 		}
@@ -85,32 +84,15 @@ public class Evaluator {
 	 */
 	private SymbolicValue evalVarValue(Var var) {
 		// Δ(𝑥) = 𝜈
-		SymbolicValue value = Utils.getOrThrow(symbEnv.get(var.getName()), "Unknown symbolic value for variable " + var.getName());
+		SymbolicValue value = symbEnv.getOrThrow(var.getName());
 		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation perm = Utils.getOrThrow(permEnv.get(value), "Missing permission for variable " + var.getName());
+		UniquenessAnnotation perm = permEnv.getOrThrow(value, "variable " + var.getName());
 		if (perm.isBottom()) {
 			throw new IllegalStateException("Variable is inaccessible in evaluation: " + var.getName());
 		}
 		return value;
 	}
 
-	/**
-	 * EvalField
-	 * Δ(𝑥) = 𝜈 Δ(𝜈.𝑓) = 𝜈′ Σ(𝜈) ≠ ⊥ Σ(𝜈′) ≠ ⊥
-	 * ------------------------------------------
-	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ; 𝜑
-	 * 
-	 * EvalUniqueOrBorrowedField
-	 * Δ(𝑥) = 𝜈 Σ(𝜈) ∈ {unique, borrowed, free} 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = 𝛼 𝐶 fresh 𝜈′
-	 *	----------------------------------------------------------------------------
-	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
-	 *
-	 * EvalSharedField
-	 * Δ(𝑥) = 𝜈 shared ≤ Σ(𝜈) 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′ 
-	 * ------------------------------------------------------
-	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
-	 * 
-	 */
 	private SymbolicValue evalFieldValue(FieldAccess fieldAccess) {
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
@@ -119,9 +101,9 @@ public class Evaluator {
 
 		// Δ(𝑥) = 𝜈
 		String receiverName = receiverVar.getName();
-		SymbolicValue receiverValue = Utils.getOrThrow(symbEnv.get(receiverName), "Unknown symbolic value for variable " + receiverName);
+		SymbolicValue receiverValue = symbEnv.getOrThrow(receiverName);
 		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation receiverPerm = Utils.getOrThrow(permEnv.get(receiverValue), "Missing permission for receiver " + receiverName);
+		UniquenessAnnotation receiverPerm = permEnv.getOrThrow(receiverValue, "receiver " + receiverName);
 
 		if (receiverPerm.isBottom()) {
 			throw new IllegalStateException("Receiver is inaccessible in evaluation: " + receiverName);
@@ -131,33 +113,73 @@ public class Evaluator {
 		String fieldName = fieldAccess.getField();
 		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
 
-		if (fieldValue == null) {
-			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
-			CtTypeReference<?> receiverType = Utils.getOrThrow(typeEnv.get(receiverName), "Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
-			// field(Γ(x),f) = 𝛼 𝐶
-			UniquenessAnnotation declaredFieldPerm = Utils.getOrThrow(maps.getFieldAnnotation(fieldName, receiverType), "Unknown field " + fieldName + " on type " + receiverType);
-
-			// EvalUniqueOrBorrowedField
-			if (isExclusiveReceiver(receiverPerm)) {
-				// field(Γ(𝑥), 𝑓) = 𝛼 𝐶 fresh 𝜈′
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, declaredFieldPerm);
-			// EvalSharedField
-			} else if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
-				// field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
-			} else {
-				throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
-			}
+		if (fieldValue != null) {
+			return evalField(receiverName, fieldName, fieldValue);
 		}
 
+		// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+		CtTypeReference<?> receiverType = typeEnv.get(receiverName);
+		if (receiverType == null) {
+			throw new IllegalStateException("Missing type for receiver " + receiverName + " when evaluating " + receiverName + "." + fieldName);
+		}
+		UniquenessAnnotation declaredFieldPerm = maps.getFieldAnnotation(fieldName, receiverType);
+		if (declaredFieldPerm == null) {
+			throw new IllegalStateException("Unknown field " + fieldName + " on type " + receiverType);
+		}
+
+		if (isExclusiveReceiver(receiverPerm)) {
+			return evalUniqueOrBorrowedField(receiverName, receiverValue, fieldName, declaredFieldPerm);
+		}
+		if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
+			return evalSharedField(receiverName, receiverValue, fieldName);
+		}
+		throw new IllegalStateException("Receiver " + receiverName + " with permission " + receiverPerm + " cannot access non-shared field " + fieldName);
+	}
+
+	/**
+	 * EvalField
+	 * Δ(𝑥) = 𝜈 Δ(𝜈.𝑓) = 𝜈′ Σ(𝜈) ≠ ⊥ Σ(𝜈′) ≠ ⊥
+	 * ------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ; 𝜑
+	 */
+	private SymbolicValue evalField(String receiverName, String fieldName, SymbolicValue fieldValue) {
 		// Σ(𝜈′) ≠ ⊥
-		UniquenessAnnotation fieldPerm = Utils.getOrThrow(permEnv.get(fieldValue), "Missing permission for field " + receiverName + "." + fieldName);
+		UniquenessAnnotation fieldPerm = permEnv.getOrThrow(fieldValue, "field " + receiverName + "." + fieldName);
 		if (fieldPerm.isBottom()) {
 			throw new IllegalStateException("Field is inaccessible in evaluation: " + receiverName + "." + fieldName);
 		}
 		return fieldValue;
+	}
+
+	/**
+	 * EvalUniqueOrBorrowedField
+	 * Δ(𝑥) = 𝜈 Σ(𝜈) ∈ {unique, borrowed, free} 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = 𝛼 𝐶 fresh 𝜈′
+	 * ----------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
+	 */
+	private SymbolicValue evalUniqueOrBorrowedField(
+			String receiverName,
+			SymbolicValue receiverValue,
+			String fieldName,
+			UniquenessAnnotation declaredFieldPerm) {
+		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
+		permEnv.add(fieldValue, declaredFieldPerm);
+		return evalField(receiverName, fieldName, fieldValue);
+	}
+
+	/**
+	 * EvalSharedField
+	 * Δ(𝑥) = 𝜈 shared ≤ Σ(𝜈) 𝜈.𝑓 ∉ Δ field(Γ(𝑥), 𝑓) = shared 𝐶 fresh 𝜈′
+	 * ------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
+	 */
+	private SymbolicValue evalSharedField(
+			String receiverName,
+			SymbolicValue receiverValue,
+			String fieldName) {
+		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
+		permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
+		return evalField(receiverName, fieldName, fieldValue);
 	}
 
 	/**
@@ -182,7 +204,7 @@ public class Evaluator {
 	 */
 	private SymbolicValue evalUnaryValue(UnaryExpression unaryExpression) {
 		// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′
-		SymbolicValue operand = evalValue(unaryExpression.getExpression());
+		SymbolicValue operand = evalExpression(unaryExpression.getExpression());
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, new UnaryExpression(unaryExpression.getOperator(), new Var(operand.toString()))));
@@ -199,9 +221,9 @@ public class Evaluator {
 	 */
 	private SymbolicValue evalBinaryValue(BinaryExpression binaryExpression) {
 		// Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
-		SymbolicValue left = evalValue(binaryExpression.getLeft());
+		SymbolicValue left = evalExpression(binaryExpression.getLeft());
 		// Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈 2 ⊣ Δ2; Σ2; 𝜑2
-		SymbolicValue right = evalValue(binaryExpression.getRight());
+		SymbolicValue right = evalExpression(binaryExpression.getRight());
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		Expression symbolicOperation = new BinaryExpression(

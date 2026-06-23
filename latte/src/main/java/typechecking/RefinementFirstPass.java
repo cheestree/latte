@@ -22,9 +22,6 @@ import spoon.reflect.declaration.CtMethod;
 import utils.Constants;
 
 public class RefinementFirstPass extends LatteAbstractChecker {
-    public RefinementFirstPass(SymbolicEnvironment se, PermissionEnvironment pe, ClassLevelMaps mtc) {
-        this(new TypeEnvironment(), se, pe, mtc);
-    }
 
     public RefinementFirstPass(TypeEnvironment te, SymbolicEnvironment se, PermissionEnvironment pe, ClassLevelMaps mtc) {
         super(te, se, pe, mtc);
