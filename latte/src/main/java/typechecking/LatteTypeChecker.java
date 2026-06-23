@@ -11,11 +11,9 @@ import context.SymbolicValue;
 import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
-import rj_language.ast.BinaryExpression;
 import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.UnaryOperator;
-import rj_language.ast.Var;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtCatch;
@@ -645,18 +643,14 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	public <T> void visitCtThisAccess(CtThisAccess<T> thisAccess) {
 		super.visitCtThisAccess(thisAccess);
 
-		// Δ(this) = 𝜈
-		SymbolicValue sv = symbEnv.get(THIS);
-		if (sv == null) {
-			logError("Symbolic value for this not found", thisAccess);
+		SymbolicValue sv;
+		try {
+			sv = evaluator.evalVar(THIS);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), thisAccess);
 			return;
 		}
-		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation ua = permEnv.get(sv);
-		if (ua.isBottom()) {
-			logError(String.format("%s:%s is not accepted in this access evaluation", sv, ua), thisAccess);
-			return;
-		}
+
 		thisAccess.putMetadata(EVAL_KEY, sv);
 	}
 
@@ -706,10 +700,10 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	}
 
 	/**
-	 * Rule EvalVar
-	 * 
-	 * Both CtVariableRead and CtLocalVariableReference have the same rule, but CtLocalVariableReference is used for local variables, while CtVariableRead is used for variables in general (including fields and parameters). Coverage of both is necessary to ensure that all variable references are handled correctly in the symbolic evaluation.
-	 * TODO: Check if we can merge the two methods into one, as they have the same logic. If not, we can keep them separate for clarity.
+	 * Attach metadata to Spoon's structural local-variable reference.
+	 *
+	 * This is not itself EvalVar: references also occur below writes and declarations,
+	 * where a bottom permission is valid before assignment.
 	 */
 	@Override
 	public <T> void visitCtLocalVariableReference(CtLocalVariableReference<T> reference) {
@@ -745,18 +739,16 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		logInfo("Visiting variable read <"+ variableRead.toString()+">", variableRead);
 		super.visitCtVariableRead(variableRead);
 
-		// Δ(𝑥) = 𝜈
-		SymbolicValue sv = symbEnv.get(variableRead.getVariable().getSimpleName());
-		if (sv == null) {
-			logError(String.format("Symbolic value for variable %s not found in the symbolic environment", variableRead.getVariable().getSimpleName()), variableRead);
+		String variableName = variableRead.getVariable().getSimpleName();
+		SymbolicValue sv;
+		try {
+			sv = evaluator.evalVar(variableName);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), variableRead);
+			return;
 		}
-		variableRead.putMetadata(EVAL_KEY, sv);
 
-		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation ua = permEnv.get(sv);
-		if (ua.isBottom()){
-			logError(String.format("%s:%s is not accepted in variable read evaluation", sv, ua), variableRead);
-		}
+		variableRead.putMetadata(EVAL_KEY, sv);
 		logInfo(variableRead.toString() + ": "+ sv);
 		loggingSpaces--;
 	}
@@ -788,26 +780,21 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		
 		super.visitCtLiteral(literal);
 
-		// Get a fresh symbolic value and add it to the environment with an immutable default value
-		// fresh 𝜈
-		SymbolicValue sv = symbEnv.getFresh();
-
 		// Grammar doesn't allow null literals, but we want to treat them as free values, so we check for null and assign the appropriate permission
 		if (literal.getValue() == null) {
+			SymbolicValue sv = symbEnv.getFresh();
 			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.FREE));
+			literal.putMetadata(EVAL_KEY, sv);
 		} else {
-			// 𝜈: imm
-			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.IMMUTABLE));
 			Expression constant = SpoonToRjTranslator.toRjLiteral(literal);
-			if (constant != null) {
-				// 𝜑 ∧ (𝜈 == 𝑐)
-				refPath.addExpression(new BinaryExpression(new Var(sv.toString()), BinaryOperator.EQ, constant));
+			if (constant == null) {
+				logError("Unsupported literal in evaluation: " + literal, literal);
+				return;
 			}
+			literal.putMetadata(EVAL_KEY, evaluator.evalConst(constant));
 		}
 
-		// Store the symbolic value in metadata
-		literal.putMetadata(EVAL_KEY, sv);
-		logInfo("Literal "+ literal.toString() + ": "+ sv);
+		logInfo("Literal "+ literal.toString() + ": "+ literal.getMetadata(EVAL_KEY));
 	}
 
 
