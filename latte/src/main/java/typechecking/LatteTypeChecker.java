@@ -614,7 +614,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		// T-Method-void return type, result can't appear in postcondition
 		if (returned == null) {
 			if (post != null) {
-				Expression evaluated = evaluator.evalPredicate(post);
+				Expression evaluated = evaluator.eval(post);
 				// Solve the post condition and check if it is satisfiable
 			}
 			return;
@@ -650,7 +650,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		// Γ3; Δ3; Σ4; 𝜑3 ⊢ 𝑂𝜌𝑝𝑜𝑠𝑡 ⇓ 𝜌′𝑝𝑜𝑠𝑡 ⊣ Γ4; Δ4; Σ5; 𝜑4
 		if (post != null) {
 			Expression substituted = post.accept(new SubstitutionVisitor("return", new Var(vRet.toString())));
-			Expression evaluated = evaluator.evalPredicate(substituted);
+			Expression evaluated = evaluator.eval(substituted);
 			// Solve the post condition and check if it is satisfiable
 		}
 	}
@@ -798,7 +798,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	}
 
 	private void evaluateAndAssumePre(Expression pre) {
-		Expression prePredicate = evaluator.evalPredicate(pre);
+		Expression prePredicate = evaluator.eval(pre);
 		if (prePredicate != null) {
 			refPath.addExpression(prePredicate);
 		}
