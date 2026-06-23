@@ -318,8 +318,6 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 				fieldRead.putMetadata(EVAL_KEY, vv);
 				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
 			}
-
-
 		} 
 		loggingSpaces--;
 	}
