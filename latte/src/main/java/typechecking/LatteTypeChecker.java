@@ -27,15 +27,14 @@ import spoon.reflect.code.CtThisAccess;
 import spoon.reflect.code.CtTypeAccess;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.CtVariableRead;
+import spoon.reflect.code.CtVariableWrite;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
-import spoon.reflect.reference.CtFieldReference;
 import spoon.reflect.reference.CtLocalVariableReference;
 import spoon.reflect.reference.CtTypeReference;
-import spoon.support.reflect.code.CtVariableWriteImpl;
 
 /**
  * In the type checker we go through the code, add metadata regarding the types and their permissions
@@ -394,23 +393,13 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		CtExpression<?> assignee = assignment.getAssigned();
 		CtExpression<?> value = assignment.getAssignment();
 
-		// Variable Assignment - CheckVarAssign
-		if (assignee instanceof CtVariableWriteImpl){
-			CtVariableWriteImpl<?> var = (CtVariableWriteImpl<?>) assignee;
-        	// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
-			SymbolicValue valueSV = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for assignment value not found");
-
-			// Δ′[𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
-			symbEnv.addVarSymbolicValue(var.getVariable().getSimpleName(), valueSV);
-
 		// Field Assignment - CheckFieldAssign
-		} else if (assignee instanceof CtFieldWrite){
-			CtFieldWrite<?> fieldWrite = (CtFieldWrite<?>) assignee;
+		if (assignee instanceof CtFieldWrite<?> fieldWrite) {
 			CtExpression<?> x = fieldWrite.getTarget();
-			CtFieldReference<?> f = fieldWrite.getVariable();
+			String fieldName = fieldWrite.getVariable().getSimpleName();
 
 			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
-			UniquenessAnnotation fieldPerm = getValueOrLog(maps.getFieldAnnotation(f.getSimpleName(), x.getType()), assignment, "Field annotation not found for " + f.getSimpleName());
+			UniquenessAnnotation fieldPerm = getValueOrLog(maps.getFieldAnnotation(fieldName, x.getType()), assignment, "Field annotation not found for " + fieldName);
 	
         	// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
 			SymbolicValue vv = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for field assignment value not found");
@@ -418,14 +407,21 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			// Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
 			SymbolicValue v = getValueOrLog((SymbolicValue) x.getMetadata(EVAL_KEY), assignment, "Symbolic value for field receiver not found");
 
-			// Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
-			UniquenessAnnotation vvPerm = permEnv.get(vv);
-			if (!permEnv.usePermissionAs(vv, vvPerm, fieldPerm)) logError(String.format("Expected %s but got %s", fieldPerm, vvPerm), assignment);
+			try {
+				evaluator.evalFieldAssignment(v, fieldName, vv, fieldPerm);
+			} catch (IllegalStateException exception) {
+				logError(exception.getMessage(), assignment);
+				return;
+			}
 
-			// Δ′′ [𝜈.𝑓 → 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
-			symbEnv.addFieldSymbolicValue(v, f.getSimpleName(), vv);
-		} 
-		ClassLevelMaps.simplify(symbEnv, permEnv);
+		// Variable Assignment - CheckVarAssign
+		} else if (assignee instanceof CtVariableWrite<?> variableWrite) {
+			// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
+			SymbolicValue valueSV = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for assignment value not found");
+
+			// Δ′[𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+			evaluator.evalVariableAssignment(variableWrite.getVariable().getSimpleName(), valueSV);
+		}
 		loggingSpaces--;
 	}
 

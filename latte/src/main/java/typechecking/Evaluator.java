@@ -97,6 +97,30 @@ public class Evaluator {
 		return value;
 	}
 
+	/**
+	 * CheckVarAssign
+	 * Δ′ [𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+	 */
+	public void evalVariableAssignment(String variableName, SymbolicValue value) {
+		symbEnv.addVarSymbolicValue(variableName, value);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
+	}
+
+	/**
+	 * CheckFieldAssign
+	 * Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
+	 * Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 */
+	public void evalFieldAssignment(SymbolicValue receiver, String fieldName, SymbolicValue value, UniquenessAnnotation fieldPermission) {
+		UniquenessAnnotation valuePermission = permEnv.getOrThrow(value, "field assignment value");
+		if (!permEnv.usePermissionAs(value, valuePermission, fieldPermission)) {
+			throw new IllegalStateException("Expected " + fieldPermission + " but got " + valuePermission);
+		}
+
+		symbEnv.addFieldSymbolicValue(receiver, fieldName, value);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
+	}
+
 	private SymbolicValue evalFieldValue(FieldAccess fieldAccess) {
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
@@ -162,11 +186,7 @@ public class Evaluator {
 	 * ----------------------------------------------------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
 	 */
-	private SymbolicValue evalUniqueOrBorrowedField(
-			String receiverName,
-			SymbolicValue receiverValue,
-			String fieldName,
-			UniquenessAnnotation declaredFieldPerm) {
+	private SymbolicValue evalUniqueOrBorrowedField(String receiverName, SymbolicValue receiverValue, String fieldName, UniquenessAnnotation declaredFieldPerm) {
 		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
 		permEnv.add(fieldValue, declaredFieldPerm);
 		return evalField(receiverName, fieldName, fieldValue);
@@ -178,10 +198,7 @@ public class Evaluator {
 	 * ------------------------------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
 	 */
-	private SymbolicValue evalSharedField(
-			String receiverName,
-			SymbolicValue receiverValue,
-			String fieldName) {
+	private SymbolicValue evalSharedField(String receiverName, SymbolicValue receiverValue, String fieldName) {
 		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
 		permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
 		return evalField(receiverName, fieldName, fieldValue);
