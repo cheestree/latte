@@ -4,13 +4,11 @@ import java.io.File;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
-import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.TypeEnvironment;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 import typechecking.LatteClassFirstPass;
-import typechecking.LatteTypeChecker;
 import typechecking.RefinementFirstPass;
 
 public class TestModelHelper {
@@ -25,11 +23,9 @@ public class TestModelHelper {
         SymbolicEnvironment se = new SymbolicEnvironment();
         PermissionEnvironment pe = new PermissionEnvironment();
         TypeEnvironment te = new TypeEnvironment();
-        RefinementPath refPath = new RefinementPath();
         ClassLevelMaps maps = new ClassLevelMaps();
         model.getRootPackage().accept(new LatteClassFirstPass(te, se, pe, maps));
         model.getRootPackage().accept(new RefinementFirstPass(te, se, pe, maps));
-        model.getRootPackage().accept(new LatteTypeChecker(te, se, pe, maps, refPath));
         lastMaps = maps;
 
         return model;
