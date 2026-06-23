@@ -14,9 +14,9 @@ import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
+import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
 import rj_language.visitors.SubstitutionVisitor;
-import rj_language.ast.UnaryOperator;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtCatch;
@@ -35,8 +35,6 @@ import spoon.reflect.code.CtTypeAccess;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.code.CtVariableWrite;
-import spoon.reflect.code.CtUnaryOperator;
-import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.code.UnaryOperatorKind;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
@@ -45,9 +43,6 @@ import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
 import spoon.reflect.reference.CtLocalVariableReference;
 import spoon.reflect.reference.CtTypeReference;
-import spoon.support.reflect.code.CtThisAccessImpl;
-import spoon.support.reflect.code.CtVariableReadImpl;
-import spoon.support.reflect.code.CtVariableWriteImpl;
 import utils.Constants;
 
 /**
@@ -217,15 +212,18 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 					
 
 	/**
-	 * CheckCall
-	 *  method(Γ(𝑥), 𝑓 ) = 𝛼 𝐶 𝑚(𝛼0 𝐶0 this, 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
-	 *	Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝐶0, · · · , 𝐶𝑛
-	 *	Γ; Δ; Σ ⊢ 𝑒0, · · · , 𝑒𝑛 ⇓ 𝜈0, · · · , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ 
-	 *	Σ′ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝛼0, · · · , 𝛼𝑛 ⊣ Σ′′
-	 *	distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
-	 *	Δ′ [𝑦 ↦ → 𝜈′]; Σ′′ [𝜈 ↦ → 𝛼] ⪰ Δ′′; Σ′′′
-	 * 	------------------------------------------------
-	 *	Γ; Δ; Σ ⊢ 𝑦 = 𝑥 .𝑚(𝑒); ⊣ Γ; Δ′′; Σ′′′
+	 * CheckCall-V2
+	 * method(Γ(𝑥), 𝑓) = (𝜌𝑝𝑟𝑒 » 𝜌𝑝𝑜𝑠𝑡) 𝛼 𝑟𝑒𝑡 𝐶 𝑚(𝛼0 𝐶0 this , 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛, 𝐶𝑛 𝑥𝑛)
+	 * Γ ⊢ 𝑦 : 𝐶  Γ ⊢ 𝑒0, · · · , 𝑒𝑛 : 𝐶0, · · · , 𝐶𝑛
+	 * Γ; Δ; Σ; 𝜑 ⊢ args(𝑥, 𝑒1 , ..., 𝑒𝑛 : 𝛼 0, ...𝛼𝑛) ⊣ 𝜈 0, ...𝜈𝑛; Δ1; Σ1; 𝜑1
+	 * Δ1; Σ1; ⊢ prepare(𝑦) ⊣ Δ2; Σ2
+	 * Γ; Δ2; Σ2; 𝜑1 ⊢ pre(𝜌𝑝𝑟𝑒, 𝑧, 𝑒, 𝑥) ⊣ Δ3 ; Σ3 ; 𝜑2
+	 * Δ3, Σ3 ⊢ havoc(𝜈0, 𝜈1, ..., 𝜈𝑛) ⊣ Δ4; Σ4; 𝑂
+	 * Δ4; Σ4 ⊢ update(𝑦, 𝛼𝑟𝑒𝑡, 𝜈1 ...𝜈𝑛 , 𝛼1, ...𝛼𝑛) ⊣ Δ5; Σ5; 𝜈𝑟𝑒𝑡
+	 * Γ; Δ5; Σ5; 𝜑2; 𝑂 ⊢ post(𝜌𝑝𝑜𝑠𝑡, 𝑧, 𝑒, 𝑥, 𝜈𝑟𝑒𝑡) ⊣ Δ6; Σ6; 𝜑3
+	 * (havoc and update aren't implemented yet, update is semi-implemented)
+	 * -----------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑦 = 𝑥.𝑚(𝑒); ⊣ Γ; Δ6; Σ6; 𝜑3
 	 */
 	@Override
 	public <T> void visitCtInvocation(CtInvocation<T> invocation) {
@@ -234,8 +232,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		String metName = invocation.getExecutable().getSimpleName();
 
-		if(metName.equals("<init>"))
-			return;
+		if(metName.equals("<init>")) return;
 
 		int paramSize = invocation.getArguments().size();
 
@@ -244,10 +241,9 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		}
 		CtTypeReference<?> e = invocation.getTarget().getType().getTypeErasure();
 		
-		// method(Γ(𝑥), 𝑓 ) = 𝛼 𝐶 𝑚(𝛼0 𝐶0 this, 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
+		// method(Γ(𝑥), 𝑓) = (𝜌𝑝𝑟𝑒 » 𝜌𝑝𝑜𝑠𝑡) 𝛼 𝑟𝑒𝑡 𝐶 𝑚(𝛼0 𝐶0 this , 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛, 𝐶𝑛 𝑥𝑛)
 		CtClass<?> klass = maps.getClassFrom(e);
-		CtMethod<?> m = maps.getCtMethod(klass, metName, 
-			invocation.getArguments().size());
+		CtMethod<?> m = maps.getCtMethod(klass, metName, invocation.getArguments().size());
 
 		if (m == null){
 			logInfo("Cannot find method {" + metName + "} for {} in the context");
@@ -258,11 +254,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			invocation.putMetadata(EVAL_KEY, unknown);
 			return;
 		}
+		// EvalArgs + perm check
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
 
 		for (int i = 0; i < paramSize; i++){
 			CtExpression<?> arg = invocation.getArguments().get(i);
-			// Γ; Δ; Σ ⊢ 𝑒1, ... , 𝑒𝑛 ⇓ 𝜈1, ... , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ 
+			// Γ; Δ; Σ; 𝜑 ⊢ 𝑥, 𝑒1, · · · , 𝑒𝑛 ⇓ 𝜈0, · · · , 𝜈𝑛 ⊣ Δ1; Σ1; 𝜑1
 			SymbolicValue vv = (SymbolicValue) arg.getMetadata(EVAL_KEY);
 			if (vv == null) logError("Symbolic value for constructor argument not found", invocation);
 			
@@ -271,7 +268,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			UniquenessAnnotation vvPerm = permEnv.get(vv);
 			
 			logInfo(String.format("Checking constructor argument %s:%s, %s <= %s", p.getSimpleName(), vv, vvPerm, expectedUA));
-			// Σ′ ⊢ 𝑒1, ... , 𝑒𝑛 : 𝛼1, ... , 𝛼𝑛 ⊣ Σ′′
+			// Σ1 ⊢ 𝜈0, · · · , 𝜈𝑛 : 𝛼0, · · · , 𝛼𝑛 ⊣ Σ2
 			if (!permEnv.usePermissionAs(vv, vvPerm, expectedUA))
 				logError(String.format("Expected %s but got %s", expectedUA, vvPerm), arg);
 
@@ -282,13 +279,13 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		// distinct(Δ, 𝑆) ⇐⇒ ∀𝜈, 𝜈′ ∈ 𝑆 : Δ ⊢ 𝜈 ⇝ 𝜈′ =⇒ 𝜈 = 𝜈′
 		List<SymbolicValue> check_distinct = new ArrayList<>();
 		for(SymbolicValue sv: paramSymbValues)
-			if (permEnv.get(sv).isGreaterEqualThan(Uniqueness.BORROWED))
-				check_distinct.add(sv);
+			if (permEnv.get(sv).isGreaterEqualThan(Uniqueness.BORROWED)) check_distinct.add(sv);
 
 		if (!symbEnv.distinct(check_distinct)){
 			logError(String.format("Non-distinct parameters in constructor call of %s", klass.getSimpleName()), invocation);
 		}
 
+		// Δ4; Σ4 ⊢ update(𝑦, 𝛼𝑟𝑒𝑡, 𝜈1 ...𝜈𝑛, 𝛼1, ...𝛼𝑛) ⊣ Δ5; Σ5; 𝜈𝑟𝑒𝑡
 		UniquenessAnnotation returnUA = new UniquenessAnnotation(m);
 		SymbolicValue returnSV = symbEnv.addVariable(invocation.toString());
 		permEnv.add(returnSV, returnUA);
