@@ -333,17 +333,20 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		super.visitCtFieldWrite(fieldWrite);
 
 		CtExpression<?> target = fieldWrite.getTarget();
-		String name;
-		if (target instanceof CtVariableRead<?> variableRead) {
-			name = variableRead.getVariable().getSimpleName();
-		} else if (target instanceof CtThisAccess<?>) {
-			name = THIS;
-		} else {
-			logError("Receiver for field write is not supported: " + target.toStringDebug(), fieldWrite);
+		String name = receiverName(target);
+		if (name == null) {
+			logError("Receiver name for field write not found for target " + target.toStringDebug(), fieldWrite);
 			return;
 		}
+
 		// Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
-		SymbolicValue receiverValue = getValueOrLog(symbEnv.get(name), fieldWrite, "Symbolic value for field receiver %s not found");
+		SymbolicValue receiverValue;
+		try {
+			receiverValue = evaluator.evalVar(name);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), fieldWrite);
+			return;
+		}
 
 		target.putMetadata(EVAL_KEY, receiverValue);
 		logInfo(String.format("%s: %s", name, receiverValue));

@@ -83,12 +83,16 @@ public class Evaluator {
 	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
 	 */
 	private SymbolicValue evalVarValue(Var var) {
+		return evalVar(var.getName());
+	}
+
+	public SymbolicValue evalVar(String variableName) {
 		// Δ(𝑥) = 𝜈
-		SymbolicValue value = symbEnv.getOrThrow(var.getName());
+		SymbolicValue value = symbEnv.getOrThrow(variableName);
 		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation perm = permEnv.getOrThrow(value, "variable " + var.getName());
+		UniquenessAnnotation perm = permEnv.getOrThrow(value, "variable " + variableName);
 		if (perm.isBottom()) {
-			throw new IllegalStateException("Variable is inaccessible in evaluation: " + var.getName());
+			throw new IllegalStateException("Variable is inaccessible in evaluation: " + variableName);
 		}
 		return value;
 	}
