@@ -77,10 +77,6 @@ public class Evaluator {
 		throw new IllegalStateException("Unsupported evaluation expression: " + expression.getClass().getSimpleName());
 	}
 
-	private SymbolicValue evalVarValue(Var var) {
-		return evalVar(var.getName());
-	}
-
 	/**
 	 * EvalVar
 	 * Δ(𝑥) = 𝜈   Σ(𝜈) ≠ ⊥
