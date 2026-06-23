@@ -101,6 +101,13 @@
 			<artifactId>antlr4-runtime</artifactId>
 			<version>4.13.2</version>
 		</dependency>
+
+    <!-- Z3 Dependency -->
+    <dependency>
+      <groupId>tools.aqua</groupId>
+      <artifactId>z3-turnkey</artifactId>
+      <version>4.14.1</version>
+  </dependency>
   </dependencies>
 
   <build>
