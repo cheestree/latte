@@ -11,9 +11,7 @@ import context.SymbolicValue;
 import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
-import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
-import rj_language.ast.UnaryOperator;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtConstructorCall;
@@ -219,9 +217,6 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		if (m == null){
 			logInfo("Cannot find method {" + metName + "} for {} in the context");
-			SymbolicValue externalResult = symbEnv.getFresh();
-			permEnv.add(externalResult, new UniquenessAnnotation(Uniqueness.SHARED));
-			invocation.putMetadata(EVAL_KEY, externalResult);
 			return;
 		}
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
@@ -578,14 +573,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtBinaryOperator(operator);
 
-		SymbolicValue left = getValueOrLog((SymbolicValue) operator.getLeftHandOperand().getMetadata(EVAL_KEY), operator, "Symbolic value for left binary operand not found");
-		SymbolicValue right = getValueOrLog((SymbolicValue) operator.getRightHandOperand().getMetadata(EVAL_KEY), operator, "Symbolic value for right binary operand not found");
-		BinaryOperator translatedOperator = SpoonOperatorTranslator.toRj(operator.getKind());
-		if (translatedOperator == null) {
-			logError("Unsupported binary operator in evaluation: " + operator.getKind(), operator);
-			return;
-		}
-		SymbolicValue sv = evaluator.evalBinary(left, translatedOperator, right);
+		// Get a fresh symbolic value and add it to the environment with a shared default value
+		SymbolicValue sv = symbEnv.getFresh();
+		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.FREE);
+
+		// Add the symbolic value to the environment with a shared default value
+		permEnv.add(sv, ua);
 
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
@@ -602,18 +595,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtUnaryOperator(operator);
 
-		UnaryOperator translatedOperator = SpoonOperatorTranslator.toRj(operator.getKind());
-		if (translatedOperator == null) {
-			// Increment and decrement are Java operations outside the refinement grammar.
-			SymbolicValue sv = symbEnv.getFresh();
-			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.SHARED));
-			operator.putMetadata(EVAL_KEY, sv);
-			loggingSpaces--;
-			return;
-		}
+		// Get a fresh symbolic value and add it to the environment with a shared default value
+		SymbolicValue sv = symbEnv.getFresh();
+		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.SHARED);
 
-		SymbolicValue operand = getValueOrLog((SymbolicValue) operator.getOperand().getMetadata(EVAL_KEY), operator, "Symbolic value for unary operand not found");
-		SymbolicValue sv = evaluator.evalUnary(translatedOperator, operand);
+		// Add the symbolic value to the environment with a shared default value
+		permEnv.add(sv, ua);
 		
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
@@ -656,15 +643,6 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		variableRead.putMetadata(EVAL_KEY, sv);
 		logInfo(variableRead.toString() + ": "+ sv);
 		loggingSpaces--;
-	}
-
-	@Override
-	public <T> void visitCtThisAccess(CtThisAccess<T> thisAccess) {
-		super.visitCtThisAccess(thisAccess);
-
-		SymbolicValue sv = symbEnv.get(THIS);
-		thisAccess.putMetadata(EVAL_KEY, sv);
-		logInfo(thisAccess.toString() + ": " + sv);
 	}
 
 	/**
