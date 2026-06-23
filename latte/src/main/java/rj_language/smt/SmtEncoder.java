@@ -159,12 +159,8 @@ final class SmtEncoder {
         Sort leftSort = knownSort(left);
         Sort rightSort = knownSort(right);
 
-        if (leftSort != null && rightSort != null
-                && !leftSort.equals(rightSort)) {
-            throw new IllegalStateException(
-                "Equality operands have incompatible sorts: "
-                    + leftSort + " and " + rightSort
-            );
+        if (leftSort != null && rightSort != null && !leftSort.equals(rightSort)) {
+            throw new IllegalStateException("Equality operands have incompatible sorts: "+ leftSort + " and " + rightSort);
         }
 
         if (leftSort != null) return leftSort;
