@@ -98,9 +98,11 @@ public class Evaluator {
 		if (!(receiverExpr instanceof Var receiverVar)) {
 			throw new IllegalStateException("Only variable receivers are supported in evaluation: " + receiverExpr);
 		}
+		return evalField(receiverVar.getName(), fieldAccess.getField());
+	}
 
+	public SymbolicValue evalField(String receiverName, String fieldName) {
 		// Δ(𝑥) = 𝜈
-		String receiverName = receiverVar.getName();
 		SymbolicValue receiverValue = symbEnv.getOrThrow(receiverName);
 		// Σ(𝜈) ≠ ⊥
 		UniquenessAnnotation receiverPerm = permEnv.getOrThrow(receiverValue, "receiver " + receiverName);
@@ -110,7 +112,6 @@ public class Evaluator {
 		}
 
 		// Δ(𝜈.𝑓) = 𝜈′
-		String fieldName = fieldAccess.getField();
 		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
 
 		if (fieldValue != null) {

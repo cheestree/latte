@@ -74,6 +74,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		enterScopes();
 
 		// Assume 'this' is a parameter always borrowed
+		typeEnv.add(THIS, c.getDeclaringType().getReference());
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 
@@ -88,6 +89,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		enterScopes();
 
 		// Assume 'this' is a parameter always borrowed
+		typeEnv.add(THIS, m.getDeclaringType().getReference());
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 
@@ -102,6 +104,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		loggingSpaces++;
 		super.visitCtParameter(parameter);
 		
+		typeEnv.add(parameter.getSimpleName(), parameter.getType());
 		SymbolicValue sv = symbEnv.addVariable(parameter.getSimpleName());
 		UniquenessAnnotation ua = new UniquenessAnnotation(parameter);
 		permEnv.add(sv, ua);
@@ -143,6 +146,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		// CheckVarDecl
 		// 1) Add the variable to the typing context
 		String name = localVariable.getSimpleName();
+		typeEnv.add(name, localVariable.getType());
 		SymbolicValue v = symbEnv.addVariable(name);
 		permEnv.add(v, new UniquenessAnnotation(Uniqueness.BOTTOM));
 
@@ -294,49 +298,17 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		}
 
 		String name = getValueOrLog(receiverName(target), fieldRead, "Receiver name for field access not found for target %s");
-
-		// Δ(𝑥) = 𝜈
-		SymbolicValue receiverValue = getValueOrLog(symbEnv.get(name), fieldRead, "Symbolic value for field receiver %s not found");
-
-		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation receiverPerm = getValueOrLog(permEnv.get(receiverValue), fieldRead, "Permission for field receiver not found");
-		if (receiverPerm.isBottom()) {
-			logError(String.format("%s:%s is not accepted in field evaluation", receiverValue, receiverPerm), fieldRead);
-		}
-
-		// Δ(𝜈.𝑓) = 𝜈′
 		String fieldName = fieldRead.getVariable().getSimpleName();
-		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
-
-		if (fieldValue == null) {
-			// 𝜈.𝑓 ∉ Δ
-			UniquenessAnnotation declaredFieldPerm = getValueOrLog(maps.getFieldAnnotation(fieldName, target.getType()), fieldRead, "Declared permission for field %s not found");
-
-			// Σ(𝜈) ∈ {unique, borrowed, free}
-			if (receiverPerm.isFree() || receiverPerm.isUnique() || receiverPerm.annotationEquals(Uniqueness.BORROWED)) {
-				// EvalUniqueOrBorrowedField
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, declaredFieldPerm);
-			// shared ≤ Σ(𝜈)
-			} else if (receiverPerm.isGreaterEqualThan(Uniqueness.SHARED) && declaredFieldPerm.isShared()) {
-				// EvalSharedField
-				fieldValue = symbEnv.addField(receiverValue, fieldName);
-				permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
-			} else {
-				logError(
-					String.format("Receiver with permission %s cannot access non-shared field %s", receiverPerm, fieldName),
-					fieldRead);
-			}
-		}
-
-		// Σ(𝜈′) ≠ ⊥
-		UniquenessAnnotation fieldPerm = getValueOrLog(permEnv.get(fieldValue), fieldRead, "Permission for field %s not found");
-		if (fieldPerm.isBottom()) {
-			logError(String.format("%s:%s is not accepted in field evaluation", fieldValue, fieldPerm), fieldRead);
+		SymbolicValue fieldValue;
+		try {
+			fieldValue = evaluator.evalField(name, fieldName);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), fieldRead);
+			return;
 		}
 
 		fieldRead.putMetadata(EVAL_KEY, fieldValue);
-		logInfo(String.format("%s.%s: %s", receiverValue, fieldName, fieldValue));
+		logInfo(String.format("%s.%s: %s", name, fieldName, fieldValue));
 		loggingSpaces--;
 	}
 
@@ -746,4 +718,5 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		}
 		return value;
 	}
+
 }

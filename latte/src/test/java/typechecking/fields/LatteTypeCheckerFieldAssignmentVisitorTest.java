@@ -55,7 +55,7 @@ class LatteTypeCheckerFieldAssignmentVisitorTest extends FieldAssignmentVisitorT
 				LatteException.class,
 				() -> process(FIXTURE_DIRECTORY + "InvalidSharedFieldRead.java"));
 
-			assertEquals("Receiver with permission SHARED cannot access non-shared field uniqueField", error.getMessage());
+			assertEquals("Receiver other with permission SHARED cannot access non-shared field uniqueField", error.getMessage());
 		}
 	}
 
