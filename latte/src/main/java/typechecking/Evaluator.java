@@ -93,6 +93,16 @@ public class Evaluator {
 		return value;
 	}
 
+	/**
+	 * Σ ⊢ 𝜈 : 𝛼 ⊣ Σ′
+	 */
+	public void usePermissionAs(SymbolicValue value, UniquenessAnnotation expectedPermission, String description) {
+		UniquenessAnnotation valuePermission = permEnv.getOrThrow(value, description);
+		if (!permEnv.usePermissionAs(value, valuePermission, expectedPermission)) {
+			throw new IllegalStateException("Expected " + expectedPermission + " but got " + valuePermission + " in " + description);
+		}
+	}
+
 	private SymbolicValue evalFieldValue(FieldAccess fieldAccess) {
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {

@@ -625,11 +625,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		SymbolicValue vRet = getValueOrLog((SymbolicValue) returned.getMetadata(EVAL_KEY), returnStatement, "Symbolic value for return expression not found");
 
 		// Σ3 ⊢ 𝜈𝑟 : 𝛼 ⊣ Σ4
-		UniquenessAnnotation ua = permEnv.get(vRet);
 		UniquenessAnnotation expectedUA = new UniquenessAnnotation(cmet);
-	
-		if(!permEnv.usePermissionAs(vRet, ua, expectedUA)){
-			logError(String.format("Expected %s but got %s in return %s", expectedUA, ua, returnStatement.toString()), returned);
+		try {
+			evaluator.usePermissionAs(vRet, expectedUA, "return " + returnStatement);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), returned);
+			return;
 		}
 
 		// Γ3 ⊢ 𝑥𝑟 : 𝐶
