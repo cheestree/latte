@@ -77,16 +77,16 @@ public class Evaluator {
 		throw new IllegalStateException("Unsupported evaluation expression: " + expression.getClass().getSimpleName());
 	}
 
-	private SymbolicValue evalVarValue(Var var) {
-		return evalVar(var.getName());
-	}
-
 	/**
 	 * EvalVar
 	 * Δ(𝑥) = 𝜈   Σ(𝜈) ≠ ⊥
 	 * ----------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
 	 */
+	private SymbolicValue evalVarValue(Var var) {
+		return evalVar(var.getName());
+	}
+
 	public SymbolicValue evalVar(String variableName) {
 		// Δ(𝑥) = 𝜈
 		SymbolicValue value = symbEnv.getOrThrow(variableName);
@@ -98,14 +98,40 @@ public class Evaluator {
 		return value;
 	}
 
+	/**
+	 * CheckVarAssign
+	 * Δ′ [𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+	 */
+	public void evalVariableAssignment(String variableName, SymbolicValue value) {
+		symbEnv.addVarSymbolicValue(variableName, value);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
+	}
+
+	/**
+	 * CheckFieldAssign
+	 * Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
+	 * Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 */
+	public void evalFieldAssignment(SymbolicValue receiver, String fieldName, SymbolicValue value, UniquenessAnnotation fieldPermission) {
+		UniquenessAnnotation valuePermission = permEnv.getOrThrow(value, "field assignment value");
+		if (!permEnv.usePermissionAs(value, valuePermission, fieldPermission)) {
+			throw new IllegalStateException("Expected " + fieldPermission + " but got " + valuePermission);
+		}
+
+		symbEnv.addFieldSymbolicValue(receiver, fieldName, value);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
+	}
+
 	private SymbolicValue evalFieldValue(FieldAccess fieldAccess) {
 		Expression receiverExpr = fieldAccess.getReceiver();
 		if (!(receiverExpr instanceof Var receiverVar)) {
 			throw new IllegalStateException("Only variable receivers are supported in evaluation: " + receiverExpr);
 		}
+		return evalField(receiverVar.getName(), fieldAccess.getField());
+	}
 
+	public SymbolicValue evalField(String receiverName, String fieldName) {
 		// Δ(𝑥) = 𝜈
-		String receiverName = receiverVar.getName();
 		SymbolicValue receiverValue = symbEnv.getOrThrow(receiverName);
 		// Σ(𝜈) ≠ ⊥
 		UniquenessAnnotation receiverPerm = permEnv.getOrThrow(receiverValue, "receiver " + receiverName);
@@ -115,7 +141,6 @@ public class Evaluator {
 		}
 
 		// Δ(𝜈.𝑓) = 𝜈′
-		String fieldName = fieldAccess.getField();
 		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
 
 		if (fieldValue != null) {
