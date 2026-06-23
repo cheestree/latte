@@ -156,6 +156,20 @@ final class SmtEncoder {
     }
 
     private Sort inferEqualitySort(Expression left, Expression right) {
+        Sort leftSort = knownSort(left);
+        Sort rightSort = knownSort(right);
+
+        if (leftSort != null && rightSort != null
+                && !leftSort.equals(rightSort)) {
+            throw new IllegalStateException(
+                "Equality operands have incompatible sorts: "
+                    + leftSort + " and " + rightSort
+            );
+        }
+
+        if (leftSort != null) return leftSort;
+        if (rightSort != null) return rightSort;
+
         if (isBoolean(left) || isBoolean(right)) {
             return context.getBoolSort();
         }
@@ -170,6 +184,13 @@ final class SmtEncoder {
             return context.getRealSort();
         }
         return context.getIntSort();
+    }
+
+    private Sort knownSort(Expression expression) {
+        if (expression instanceof Var variable) {
+            return symbolSorts.get(variable.getName());
+        }
+        return null;
     }
 
     private boolean isBoolean(Expression expression) {

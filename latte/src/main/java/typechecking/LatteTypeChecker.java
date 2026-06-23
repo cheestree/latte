@@ -16,6 +16,7 @@ import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
+import rj_language.smt.SmtSolver;
 import rj_language.visitors.SubstitutionVisitor;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
@@ -52,6 +53,7 @@ import utils.Constants;
 public class LatteTypeChecker  extends LatteAbstractChecker {
 	private final RefinementPath refPath;
 	private final Evaluator evaluator;
+	private final SmtSolver smtSolver;
 
 	public LatteTypeChecker( TypeEnvironment typeEnv, SymbolicEnvironment symbEnv, 
 							PermissionEnvironment permEnv, ClassLevelMaps mtc, RefinementPath refPath) {
@@ -64,6 +66,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			permEnv,
 			refPath
 		);
+		this.smtSolver = new SmtSolver();
 		logInfo("[ Latte Type checker initialized ]");
 	}
 
@@ -196,11 +199,17 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 				if (metadata != null){
 					SymbolicValue vv = (SymbolicValue) metadata;
 					symbEnv.addVarSymbolicValue(localVariable.getSimpleName(), vv);
+					symbEnv.addVarSymbolicValue(name, vv);
 					localVariable.putMetadata(EVAL_KEY, vv);
+
+					if (value instanceof CtConstructorCall<?> constructorCall) {
+						assumeConstructorPost(name, constructorCall);
+					}
+
+					ClassLevelMaps.simplify(symbEnv, permEnv);
 				} else {
 					symbEnv.addVarSymbolicValue(localVariable.getSimpleName(), vValue);
 				}
-				ClassLevelMaps.simplify(symbEnv, permEnv);
 			}
 		}
 
@@ -209,7 +218,24 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		loggingSpaces--;
 	}
-					
+			
+	private void assumeConstructorPost(String variableName, CtConstructorCall<?> call) {
+		CtClass<?> klass = maps.getClassFrom(call.getType());
+		if (klass == null) return;
+
+		CtConstructor<?> constructor = maps.getCtConstructor(klass, call.getArguments().size());
+		if (constructor == null) return;
+
+		RefinementContract contract = (RefinementContract) constructor.getMetadata(Constants.CONSTRUCTOR_CONTRACT_KEY);
+
+		Expression post = contract == null ? null : contract.getTo();
+		if (post == null) return;
+
+		Expression substituted = post.accept(new SubstitutionVisitor("this", new Var(variableName)));
+
+		Expression evaluated = evaluator.eval(substituted);
+		refPath.addExpression(evaluated);
+	}
 
 	/**
 	 * CheckCall-V2
@@ -234,14 +260,12 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		if(metName.equals("<init>")) return;
 
-		int paramSize = invocation.getArguments().size();
-
 		if (invocation.getTarget() == null){
 			logError("Invocation needs to have a target but found none -", invocation);
 		}
-		CtTypeReference<?> e = invocation.getTarget().getType().getTypeErasure();
 		
 		// method(Γ(𝑥), 𝑓) = (𝜌𝑝𝑟𝑒 » 𝜌𝑝𝑜𝑠𝑡) 𝛼 𝑟𝑒𝑡 𝐶 𝑚(𝛼0 𝐶0 this , 𝛼1 𝐶1 𝑥1, · · · , 𝛼𝑛, 𝐶𝑛 𝑥𝑛)
+		CtTypeReference<?> e = invocation.getTarget().getType().getTypeErasure();
 		CtClass<?> klass = maps.getClassFrom(e);
 		CtMethod<?> m = maps.getCtMethod(klass, metName, invocation.getArguments().size());
 
@@ -255,42 +279,107 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			return;
 		}
 		// EvalArgs + perm check
-		List<SymbolicValue> paramSymbValues = new ArrayList<>();
+		List<SymbolicValue> argSymbValues = evalArgs(invocation, m);
+		if (argSymbValues == null) return;
 
-		for (int i = 0; i < paramSize; i++){
+		// pre
+		checkPre(invocation, m);
+
+		SymbolicValue returnSV = symbEnv.getFresh();
+		permEnv.add(returnSV, new UniquenessAnnotation(m));
+		invocation.putMetadata(EVAL_KEY, returnSV);
+	}
+
+	/*
+	**
+	* Step 2 - EvalArgs
+	* Γ; Δ; Σ; φ ⊢ x, e1, ..., en ⇓ ν0, ..., νn ⊣ Δ1; Σ1; φ1
+	* Σ1 ⊢ ν0, ..., νn: α0, ..., αn ⊣ Σ2
+	* distinct(Δ1, {νi: borrowed ≤ αi})
+	*/
+	private List<SymbolicValue> evalArgs(CtInvocation<?> invocation, CtMethod<?> m) {
+		List<SymbolicValue> argSymbValues = new ArrayList<>();
+		int paramSize = invocation.getArguments().size();
+
+		for (int i = 0; i < paramSize; i++) {
 			CtExpression<?> arg = invocation.getArguments().get(i);
-			// Γ; Δ; Σ; 𝜑 ⊢ 𝑥, 𝑒1, · · · , 𝑒𝑛 ⇓ 𝜈0, · · · , 𝜈𝑛 ⊣ Δ1; Σ1; 𝜑1
 			SymbolicValue vv = (SymbolicValue) arg.getMetadata(EVAL_KEY);
-			if (vv == null) logError("Symbolic value for constructor argument not found", invocation);
-			
+			if (vv == null) {
+				logError("Symbolic value for argument not found", invocation);
+				return null;
+			}
+
 			CtParameter<?> p = m.getParameters().get(i);
 			UniquenessAnnotation expectedUA = new UniquenessAnnotation(p);
 			UniquenessAnnotation vvPerm = permEnv.get(vv);
-			
-			logInfo(String.format("Checking constructor argument %s:%s, %s <= %s", p.getSimpleName(), vv, vvPerm, expectedUA));
-			// Σ1 ⊢ 𝜈0, · · · , 𝜈𝑛 : 𝛼0, · · · , 𝛼𝑛 ⊣ Σ2
-			if (!permEnv.usePermissionAs(vv, vvPerm, expectedUA))
+
+			logInfo(String.format("Checking argument %s:%s, %s <= %s", p.getSimpleName(), vv, vvPerm, expectedUA));
+
+			// Σ1 ⊢ νi: αi ⊣ Σ2
+			if (!permEnv.usePermissionAs(vv, vvPerm, expectedUA)){
 				logError(String.format("Expected %s but got %s", expectedUA, vvPerm), arg);
+			}
 
-			paramSymbValues.add(vv);
-		}
-		
-		// distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 })
-		// distinct(Δ, 𝑆) ⇐⇒ ∀𝜈, 𝜈′ ∈ 𝑆 : Δ ⊢ 𝜈 ⇝ 𝜈′ =⇒ 𝜈 = 𝜈′
-		List<SymbolicValue> check_distinct = new ArrayList<>();
-		for(SymbolicValue sv: paramSymbValues)
-			if (permEnv.get(sv).isGreaterEqualThan(Uniqueness.BORROWED)) check_distinct.add(sv);
-
-		if (!symbEnv.distinct(check_distinct)){
-			logError(String.format("Non-distinct parameters in constructor call of %s", klass.getSimpleName()), invocation);
+			argSymbValues.add(vv);
 		}
 
-		// Δ4; Σ4 ⊢ update(𝑦, 𝛼𝑟𝑒𝑡, 𝜈1 ...𝜈𝑛, 𝛼1, ...𝛼𝑛) ⊣ Δ5; Σ5; 𝜈𝑟𝑒𝑡
-		UniquenessAnnotation returnUA = new UniquenessAnnotation(m);
-		SymbolicValue returnSV = symbEnv.addVariable(invocation.toString());
-		permEnv.add(returnSV, returnUA);
-		logInfo(String.format("Invocation %s:%s, %s:%s", invocation.toString(), returnSV, returnSV, returnUA));
-		invocation.putMetadata(EVAL_KEY, returnSV);
+		// distinct(Δ1, {νi: borrowed ≤ αi})
+		List<SymbolicValue> distinctCheck = argSymbValues.stream()
+			.filter(sv -> permEnv.get(sv).isGreaterEqualThan(Uniqueness.BORROWED))
+			.toList();
+
+		if (!symbEnv.distinct(distinctCheck)){
+			logError("Non-distinct arguments in call to " + m.getSimpleName(), invocation);
+		}
+
+		return argSymbValues;
+	}
+
+	/**
+	 * Step 4 — CheckPre
+	 * Γ; Δ; Σ; φ ⊢ ρ_pre[e/x][z/this] ⇓ ρ′_pre
+	 * Γ; Δ′; Σ′; φ ⊢_SMT ρ′_pre
+	 */
+	private void checkPre(CtInvocation<?> invocation, CtMethod<?> m) {
+		RefinementContract contract = (RefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
+		Expression pre = contract == null ? null : contract.getFrom();
+		if (pre == null) return;
+
+		// ρ_pre[e/x][z/this] — substitute actuals into precondition
+		Expression substituted = substituteActuals(pre, m, invocation);
+		Expression evaluated = evaluator.eval(substituted);
+
+		// φ ⊢_SMT ρ′_pre
+		SmtSolver.EntailmentResult result = smtSolver.checkEntailment(refPath.toConjunct(), evaluated);
+		if (!result.entailed()) {
+			logError(String.format("Precondition not satisfied for %s: %s. Counterexample: %s",m.getSimpleName(), pre, result.counterexample()), invocation);
+		}
+	}
+
+	/**
+	 * Substitutes formal parameter names with actual argument symbolic values.
+	 * Implements ρ[e1/x1]...[en/xn][z/this] from CheckPre and AssumePost.
+	 */
+	private Expression substituteActuals(Expression expression, CtMethod<?> method, CtInvocation<?> invocation) {
+		expression = expression.accept(new SubstitutionVisitor("this", new Var(invocation.getTarget().toString())));
+
+		for (int i = 0; i < method.getParameters().size(); i++) {
+			expression = expression.accept(new SubstitutionVisitor(
+				method.getParameters().get(i).getSimpleName(),
+				actualArgumentExpression(invocation.getArguments().get(i))
+			));
+		}
+
+		return expression;
+	}
+
+	private Expression actualArgumentExpression(CtExpression<?> argument) {
+		if (argument instanceof CtLiteral<?> literal) {
+			Expression constant = SpoonToRjTranslator.toRjLiteral(literal);
+			if (constant != null) return constant;
+		}
+
+		return new Var(argument.toString());
 	}
 
 	/**
