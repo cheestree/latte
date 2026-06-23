@@ -17,6 +17,7 @@ import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
 import rj_language.ast.UnaryExpression;
+import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
 import spoon.reflect.reference.CtTypeReference;
 
@@ -205,9 +206,16 @@ public class Evaluator {
 	private SymbolicValue evalUnaryValue(UnaryExpression unaryExpression) {
 		// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′
 		SymbolicValue operand = evalExpression(unaryExpression.getExpression());
+		return evalUnary(unaryExpression.getOperator(), operand);
+	}
+
+	public SymbolicValue evalUnary(UnaryOperator operator, SymbolicValue operand) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
-		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, new UnaryExpression(unaryExpression.getOperator(), new Var(operand.toString()))));
+		refinementPath.addExpression(new BinaryExpression(
+			new Var(value.toString()),
+			BinaryOperator.EQ,
+			new UnaryExpression(operator, new Var(operand.toString()))));
 		return value;
 	}
 
@@ -224,11 +232,15 @@ public class Evaluator {
 		SymbolicValue left = evalExpression(binaryExpression.getLeft());
 		// Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈 2 ⊣ Δ2; Σ2; 𝜑2
 		SymbolicValue right = evalExpression(binaryExpression.getRight());
+		return evalBinary(left, binaryExpression.getOperator(), right);
+	}
+
+	public SymbolicValue evalBinary(SymbolicValue left, BinaryOperator operator, SymbolicValue right) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		Expression symbolicOperation = new BinaryExpression(
 			new Var(left.toString()),
-			binaryExpression.getOperator(),
+			operator,
 			new Var(right.toString()));
 		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, symbolicOperation));
 		return value;

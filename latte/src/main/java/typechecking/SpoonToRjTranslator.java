@@ -26,6 +26,7 @@ public class SpoonToRjTranslator {
 			case MINUS -> BinaryOperator.SUB;
 			case MUL -> BinaryOperator.MUL;
 			case DIV -> BinaryOperator.DIV;
+			case MOD -> BinaryOperator.MOD;
 			default  -> null;
 		};
 	}

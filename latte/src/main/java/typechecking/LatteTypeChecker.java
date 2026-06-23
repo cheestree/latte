@@ -14,7 +14,6 @@ import context.UniquenessAnnotation;
 import rj_language.ast.BinaryExpression;
 import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
-import rj_language.ast.UnaryExpression;
 import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
 import spoon.reflect.code.CtAssignment;
@@ -623,18 +622,14 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			return;
 		}
 
-		// fresh 𝜈
-		SymbolicValue sv = symbEnv.getFresh();
-		// 𝜈: imm
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
-		permEnv.add(sv, ua);
-
 		// if ⊕ ∈ {+, -, *, /, ==, !=, <, >, <=, >=, || , &&}
 		BinaryOperator op = SpoonToRjTranslator.toRjBinaryOperator(operator.getKind());
-		if (op != null){
-			// 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
-			refPath.addExpression(new BinaryExpression(new Var(sv.toString()),BinaryOperator.EQ, new BinaryExpression(new Var(operand1.toString()), op, new Var(operand2.toString()))));
+		if (op == null) {
+			logError("Unsupported binary operator in evaluation: " + operator.getKind(), operator);
+			return;
 		}
+
+		SymbolicValue sv = evaluator.evalBinary(operand1, op, operand2);
 
 		// Store the symbolic value in metadata
 		operator.putMetadata(EVAL_KEY, sv);
@@ -695,22 +690,17 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			return;
 		}
 
-		// fresh 𝜈
-		// 𝜈: imm
-		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
-		permEnv.add(sv, ua);
-		
-		// Store the symbolic value in metadata
-		operator.putMetadata(EVAL_KEY, sv);
-		
 		// if ⊕ ∈ {-, !}
 		UnaryOperator op = SpoonToRjTranslator.toRjUnaryOperator(operator.getKind());
-		if (op != null) {
-			// 𝜑 ∧ (𝜈 == ⊕𝜈1)
-			refPath.addExpression(new BinaryExpression(new Var(sv.toString()),BinaryOperator.EQ, new UnaryExpression(op, new Var(operand.toString()))));
+		if (op == null) {
+			logError("Unsupported unary operator in evaluation: " + operator.getKind(), operator);
+			return;
 		}
 
+		SymbolicValue sv = evaluator.evalUnary(op, operand);
+
+		// Store the symbolic value in metadata
+		operator.putMetadata(EVAL_KEY, sv);
 		logInfo(operator.toStringDebug() + ": "+ sv);
 		loggingSpaces--;
 	}
@@ -855,7 +845,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	}
 
 	private void evaluateAndAssumePre(Expression pre) {
-		Expression prePredicate = evaluator.evalPredicate(pre);
+		Expression prePredicate = evaluator.eval(pre);
 		if (prePredicate != null) {
 			refPath.addExpression(prePredicate);
 		}
