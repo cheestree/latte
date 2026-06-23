@@ -17,6 +17,7 @@ import rj_language.ast.LiteralInt;
 import rj_language.ast.LiteralReal;
 import rj_language.ast.LiteralString;
 import rj_language.ast.UnaryExpression;
+import rj_language.ast.UnaryOperator;
 import rj_language.ast.Var;
 import spoon.reflect.reference.CtTypeReference;
 
@@ -77,18 +78,22 @@ public class Evaluator {
 	}
 
 	/**
-	 *  EvalVar
-	 *	Δ(𝑥) = 𝜈 Σ(𝜈) ≠ ⊥
-	 *  ----------------------------------
-	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
+	 * EvalVar
+	 * Δ(𝑥) = 𝜈   Σ(𝜈) ≠ ⊥
+	 * ----------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
 	 */
 	private SymbolicValue evalVarValue(Var var) {
+		return evalVar(var.getName());
+	}
+
+	public SymbolicValue evalVar(String variableName) {
 		// Δ(𝑥) = 𝜈
-		SymbolicValue value = symbEnv.getOrThrow(var.getName());
+		SymbolicValue value = symbEnv.getOrThrow(variableName);
 		// Σ(𝜈) ≠ ⊥
-		UniquenessAnnotation perm = permEnv.getOrThrow(value, "variable " + var.getName());
+		UniquenessAnnotation perm = permEnv.getOrThrow(value, "variable " + variableName);
 		if (perm.isBottom()) {
-			throw new IllegalStateException("Variable is inaccessible in evaluation: " + var.getName());
+			throw new IllegalStateException("Variable is inaccessible in evaluation: " + variableName);
 		}
 		return value;
 	}
@@ -101,6 +106,29 @@ public class Evaluator {
 		if (!permEnv.usePermissionAs(value, valuePermission, expectedPermission)) {
 			throw new IllegalStateException("Expected " + expectedPermission + " but got " + valuePermission + " in " + description);
 		}
+    
+  /**
+	 * CheckVarAssign
+	 * Δ′ [𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+	 */
+	public void evalVariableAssignment(String variableName, SymbolicValue value) {
+		symbEnv.addVarSymbolicValue(variableName, value);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
+	}
+
+	/**
+	 * CheckFieldAssign
+	 * Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
+	 * Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 */
+	public void evalFieldAssignment(SymbolicValue receiver, String fieldName, SymbolicValue value, UniquenessAnnotation fieldPermission) {
+		UniquenessAnnotation valuePermission = permEnv.getOrThrow(value, "field assignment value");
+		if (!permEnv.usePermissionAs(value, valuePermission, fieldPermission)) {
+			throw new IllegalStateException("Expected " + fieldPermission + " but got " + valuePermission);
+		}
+
+		symbEnv.addFieldSymbolicValue(receiver, fieldName, value);
+		ClassLevelMaps.simplify(symbEnv, permEnv);
 	}
 
 	private SymbolicValue evalFieldValue(FieldAccess fieldAccess) {
@@ -108,9 +136,11 @@ public class Evaluator {
 		if (!(receiverExpr instanceof Var receiverVar)) {
 			throw new IllegalStateException("Only variable receivers are supported in evaluation: " + receiverExpr);
 		}
+		return evalField(receiverVar.getName(), fieldAccess.getField());
+	}
 
+	public SymbolicValue evalField(String receiverName, String fieldName) {
 		// Δ(𝑥) = 𝜈
-		String receiverName = receiverVar.getName();
 		SymbolicValue receiverValue = symbEnv.getOrThrow(receiverName);
 		// Σ(𝜈) ≠ ⊥
 		UniquenessAnnotation receiverPerm = permEnv.getOrThrow(receiverValue, "receiver " + receiverName);
@@ -120,7 +150,6 @@ public class Evaluator {
 		}
 
 		// Δ(𝜈.𝑓) = 𝜈′
-		String fieldName = fieldAccess.getField();
 		SymbolicValue fieldValue = symbEnv.get(receiverValue, fieldName);
 
 		if (fieldValue != null) {
@@ -167,11 +196,7 @@ public class Evaluator {
 	 * ----------------------------------------------------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
 	 */
-	private SymbolicValue evalUniqueOrBorrowedField(
-			String receiverName,
-			SymbolicValue receiverValue,
-			String fieldName,
-			UniquenessAnnotation declaredFieldPerm) {
+	private SymbolicValue evalUniqueOrBorrowedField(String receiverName, SymbolicValue receiverValue, String fieldName, UniquenessAnnotation declaredFieldPerm) {
 		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
 		permEnv.add(fieldValue, declaredFieldPerm);
 		return evalField(receiverName, fieldName, fieldValue);
@@ -183,62 +208,74 @@ public class Evaluator {
 	 * ------------------------------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
 	 */
-	private SymbolicValue evalSharedField(
-			String receiverName,
-			SymbolicValue receiverValue,
-			String fieldName) {
+	private SymbolicValue evalSharedField(String receiverName, SymbolicValue receiverValue, String fieldName) {
 		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
 		permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
 		return evalField(receiverName, fieldName, fieldValue);
 	}
 
+	private SymbolicValue evalConstValue(Expression constant) {
+		return evalConst(constant);
+	}
+
 	/**
 	 * EvalConst
 	 * fresh 𝜈
-	 * -------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑐 ⇓ 𝜈 ⊣ Δ; 𝜈: imm, Σ; 𝜑 ∧ (𝜈 == 𝑐)
+	 * ------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑐 ⇓ 𝜈 ⊣ Δ; 𝜈: imm, Σ; 𝜑 ∧ (𝜈 == 𝑐)
 	 */
-	private SymbolicValue evalConstValue(Expression constant) {
+	public SymbolicValue evalConst(Expression constant) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, constant));
 		return value;
 	}
 
-	/**
-	 *  EvalUnary
-	 *	Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′ fresh 𝜈
-	 *	if ⊕ ∈ {-, !}
-	 *	-------------------------------------------
-	 *	Γ; Δ; Σ ⊢ ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ′; 𝜈: imm, Σ′; 𝜑 ∧ (𝜈 == ⊕𝜈1)
-	 */
 	private SymbolicValue evalUnaryValue(UnaryExpression unaryExpression) {
 		// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′
 		SymbolicValue operand = evalExpression(unaryExpression.getExpression());
-		// fresh 𝜈
-		SymbolicValue value = addImmutableFresh();
-		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, new UnaryExpression(unaryExpression.getOperator(), new Var(operand.toString()))));
-		return value;
+		return evalUnary(unaryExpression.getOperator(), operand);
 	}
 
 	/**
-	 * 	EvalBinary
-	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
-	 *	Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈2 ⊣ Δ2; Σ2; 𝜑2 fresh 𝜈
-	 *	if ⊕ ∈ {+, -, *, /, == , < , || , &&}
-	 *  ---------------------------------------------------------------------------
-	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ2 ; 𝜈: imm, Σ2 ; 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
+	 * EvalUnary
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′; 𝜑′   fresh 𝜈
+	 * if ⊕ ∈ {-, !}
+	 * ----------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ ⊕𝑒 ⇓ 𝜈 ⊣ Δ′; 𝜈: imm, Σ′; 𝜑′ ∧ (𝜈 == ⊕𝜈1)
 	 */
+	public SymbolicValue evalUnary(UnaryOperator operator, SymbolicValue operand) {
+		// fresh 𝜈
+		SymbolicValue value = addImmutableFresh();
+		refinementPath.addExpression(new BinaryExpression(
+			new Var(value.toString()),
+			BinaryOperator.EQ,
+			new UnaryExpression(operator, new Var(operand.toString()))));
+		return value;
+	}
+
 	private SymbolicValue evalBinaryValue(BinaryExpression binaryExpression) {
 		// Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
 		SymbolicValue left = evalExpression(binaryExpression.getLeft());
 		// Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈 2 ⊣ Δ2; Σ2; 𝜑2
 		SymbolicValue right = evalExpression(binaryExpression.getRight());
+		return evalBinary(left, binaryExpression.getOperator(), right);
+	}
+
+	/**
+	 * EvalBinary
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
+	 * Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈2 ⊣ Δ2; Σ2; 𝜑2   fresh 𝜈
+	 * if ⊕ ∈ {+, -, *, /, ==, <, ||, &&}
+	 * ---------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ2; 𝜈: imm, Σ2; 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
+	 */
+	public SymbolicValue evalBinary(SymbolicValue left, BinaryOperator operator, SymbolicValue right) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
 		Expression symbolicOperation = new BinaryExpression(
 			new Var(left.toString()),
-			binaryExpression.getOperator(),
+			operator,
 			new Var(right.toString()));
 		refinementPath.addExpression(new BinaryExpression(new Var(value.toString()), BinaryOperator.EQ, symbolicOperation));
 		return value;
@@ -251,8 +288,6 @@ public class Evaluator {
 	}
 
 	private boolean isExclusiveReceiver(UniquenessAnnotation perm) {
-		return perm.isFree()
-			|| perm.isUnique()
-			|| perm.annotationEquals(Uniqueness.BORROWED);
+		return perm.isFree() || perm.isUnique() || perm.annotationEquals(Uniqueness.BORROWED);
 	}
 }

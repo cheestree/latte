@@ -12,11 +12,15 @@ import context.SymbolicValue;
 import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
+import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
 import rj_language.ast.Var;
 import rj_language.visitors.SubstitutionVisitor;
+import rj_language.ast.UnaryOperator;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
+import spoon.reflect.code.CtCatch;
+import spoon.reflect.code.CtCatchVariable;
 import spoon.reflect.code.CtConstructorCall;
 import spoon.reflect.code.CtExpression;
 import spoon.reflect.code.CtFieldRead;
@@ -26,14 +30,19 @@ import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.CtLocalVariable;
 import spoon.reflect.code.CtReturn;
+import spoon.reflect.code.CtThisAccess;
+import spoon.reflect.code.CtTypeAccess;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.CtVariableRead;
+import spoon.reflect.code.CtVariableWrite;
+import spoon.reflect.code.CtUnaryOperator;
+import spoon.reflect.code.CtVariableRead;
+import spoon.reflect.code.UnaryOperatorKind;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
-import spoon.reflect.reference.CtFieldReference;
 import spoon.reflect.reference.CtLocalVariableReference;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.support.reflect.code.CtThisAccessImpl;
@@ -70,7 +79,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		super.visitCtClass(ctClass);
 		exitScopes();
 	}
-			
+
 	
 	@Override
 	public <T> void visitCtConstructor(CtConstructor<T> c) {
@@ -171,6 +180,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		// CheckVarDecl
 		// 1) Add the variable to the typing context
 		String name = localVariable.getSimpleName();
+		typeEnv.add(name, localVariable.getType());
 		SymbolicValue v = symbEnv.addVariable(name);
 		permEnv.add(v, new UniquenessAnnotation(Uniqueness.BOTTOM));
 
@@ -241,6 +251,11 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		if (m == null){
 			logInfo("Cannot find method {" + metName + "} for {} in the context");
+			// Method isn't found in the class maps, so we assign it shared permission and a fresh symbolic value.
+			// This makes it so that we don't make any assumption about its permissions, but it allows the type checker to continue checking the rest of the code. If it was bottom, it would stop the type checking process, either from being consumed or inaccessible, while higher permissions would wrongly make assumptions like refinement paths that aren't true.
+			SymbolicValue unknown = symbEnv.getFresh();
+			permEnv.add(unknown, new UniquenessAnnotation(Uniqueness.SHARED));
+			invocation.putMetadata(EVAL_KEY, unknown);
 			return;
 		}
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
@@ -283,9 +298,27 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * EvalField
-		Δ(𝑥) = 𝜈   Δ(𝜈.𝑓 ) = 𝜈′   Σ(𝜈) ≠ ⊥   Σ(𝜈′) ≠ ⊥
+		Δ(𝑥) = 𝜈   Δ(𝜈.𝑓) = 𝜈′   Σ(𝜈) ≠ ⊥   Σ(𝜈′) ≠ ⊥
 		----------------------------------------------
-		Γ; Δ; Σ ⊢ 𝑥 .𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ
+		Γ; Δ; Σ ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ Γ; Δ; Σ
+
+		EvalUniqueOrBorrowedField
+		Δ(𝑥) = 𝜈
+		Σ(𝜈) ∈ {unique, borrowed, free}
+		𝜈.𝑓 ∉ Δ
+		field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+		fresh 𝜈′
+		--------------------------------------------------
+		Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
+
+		EvalSharedField
+		Δ(𝑥) = 𝜈
+		shared ≤ Σ(𝜈)
+		𝜈.𝑓 ∉ Δ
+		field(Γ(𝑥), 𝑓) = shared 𝐶
+		fresh 𝜈′
+		------------------------------------------------------
+		Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′ , Δ; 𝜈′: shared, Σ; 𝜑
 	 */
 	@Override
 	public <T> void visitCtFieldRead(CtFieldRead<T> fieldRead) {
@@ -294,72 +327,27 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 		super.visitCtFieldRead(fieldRead);
 		CtExpression<?> target = fieldRead.getTarget();
-		CtFieldReference<?> f = fieldRead.getVariable();
+		if (target instanceof CtTypeAccess<?>) {
+			// To avoid evaluation problems with external Java APIs (System.out.println, etc), we treat static fields as a special case and assign them a fresh symbolic value with shared permission, as it's the least restrictive and allows us to use external APIs without assuming ownership of their values.
+			SymbolicValue staticFieldValue = symbEnv.getFresh();
+			permEnv.add(staticFieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
+			fieldRead.putMetadata(EVAL_KEY, staticFieldValue);
+			loggingSpaces--;
+			return;
+		}
 
-		if ( target instanceof CtVariableReadImpl || target instanceof CtThisAccessImpl){
-			SymbolicValue v;
-			CtTypeReference<?> type = target.getType();
-			v = (target instanceof CtVariableReadImpl) ? 
-				symbEnv.get(((CtVariableReadImpl<?>)target).getVariable().getSimpleName()) : 
-				symbEnv.get(THIS);
+		String name = getValueOrLog(receiverName(target), fieldRead, "Receiver name for field access not found for target %s");
+		String fieldName = fieldRead.getVariable().getSimpleName();
+		SymbolicValue fieldValue;
+		try {
+			fieldValue = evaluator.evalField(name, fieldName);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), fieldRead);
+			return;
+		}
 
-			// Δ(𝑥) = 𝜈 
-			UniquenessAnnotation permV = permEnv.get(v);
-			SymbolicValue vv = symbEnv.get(v, f.getSimpleName());
-			// EVAL UNIQUE FIELD
-			// 𝜈.𝑓 ∉ Δ
-			if ( permV.isGreaterEqualThan(Uniqueness.UNIQUE) && vv == null) {
-				//field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶
-				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
-				if (fieldUA == null) logError(String.format("field annotation not found for %s", f.getSimpleName()), fieldRead);
-				//----------------
-				//𝜈.𝑓 : 𝜈′, Δ; 𝜈′: 𝛼, Σ   fresh 𝜈
-				vv = symbEnv.addField(v, f.getSimpleName());
-				permEnv.add(vv, fieldUA);
-
-				// 𝑥 .𝑓 ⇓ 𝜈′
-				fieldRead.putMetadata(EVAL_KEY, vv);
-				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
-			// EVAL SHARED FIELD
-			} else if ( permV.isGreaterEqualThan(Uniqueness.SHARED) && vv == null){
-				// field(Γ(𝑥), 𝑓 ) = shared 𝐶
-				UniquenessAnnotation fieldUA = maps.getFieldAnnotation(f.getSimpleName(), type);
-				if (!fieldUA.isShared()){
-					logError(String.format("Field %s is not shared but %s is", f.getSimpleName(), v), fieldRead);
-				} else {
-					// 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ
-					vv = symbEnv.addField(v, f.getSimpleName());
-					permEnv.add(vv, fieldUA);
-					fieldRead.putMetadata(EVAL_KEY, vv);
-					logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
-				}
-			} else {
-				//EVAL FIELD
-				// Σ(𝜈) ≠ ⊥ 
-				if (permV.isBottom()){
-					logError(
-						String.format("%s:%s is not accepted in field evaluation", v, permV)
-						, fieldRead);
-				}
-				
-				// Δ(𝜈.𝑓 ) = 𝜈′, if not present, add it 
-				if (vv == null){
-					symbEnv.addField(vv, f.getSimpleName());
-					logError(String.format("Could not find symbolic value for %s.%s", v, f.getSimpleName())
-						, fieldRead);
-				}
-
-				// Σ(𝜈′) ≠ ⊥
-				UniquenessAnnotation permVV = permEnv.get(vv);
-				if (permVV.isBottom()){
-					logError(
-						String.format("%s:%s is not accepted in field evaluation", vv, permVV)
-						, fieldRead);
-				}
-				fieldRead.putMetadata(EVAL_KEY, vv);
-				logInfo(String.format("%s.%s: %s", v, f.getSimpleName(), vv));
-			}
-		} 
+		fieldRead.putMetadata(EVAL_KEY, fieldValue);
+		logInfo(String.format("%s.%s: %s", name, fieldName, fieldValue));
 		loggingSpaces--;
 	}
 
@@ -367,49 +355,74 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	 * Visit a field write as a field assignment
 	 * 
 	 * CheckFieldAssign
-	 * field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶 Γ ⊢ 𝑒 : 𝐶 Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′
-	 * Γ; Δ′; Σ′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′ Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′ Δ′′ [𝜈.𝑓 ↦ → 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
-	 * --------------------------------------------------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑥 .𝑓 = 𝑒; ⊣ Γ; Δ′′′; Σ′′′′
+	 *  field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+	 *	Γ ⊢ 𝑒 : 𝐶
+	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
+	 *	Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
+	 *	Σ′′ ⊢ 𝜈′: 𝛼 ⊣ Σ′′′
+	 *	Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 *  -------------------------------------------------
+	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 = 𝑒; ⊣ Γ; Δ′′′; Σ′′′′; 𝜑′′
+
+	 * only Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′ is checked here
 	 */
 	@Override
 	public <T> void visitCtFieldWrite(CtFieldWrite<T> fieldWrite) {
 		logInfo("Visiting field write <"+ fieldWrite.toStringDebug()+">", fieldWrite);
 		super.visitCtFieldWrite(fieldWrite);
-		CtExpression<?> ce = fieldWrite.getTarget();
-		if (ce instanceof CtVariableReadImpl){
-			CtVariableReadImpl<?> x = (CtVariableReadImpl<?>) ce;
-			SymbolicValue v = symbEnv.get(x.getVariable().getSimpleName());
-			ce.putMetadata(EVAL_KEY, v);
-			logInfo(x.getVariable().getSimpleName() + ": "+ v);
-		} else if (ce instanceof CtThisAccessImpl){
-			SymbolicValue v = symbEnv.get(THIS);
-			ce.putMetadata(EVAL_KEY, v);
-			logInfo("this: "+ v);
-		} else {
-			logError("Field write target not found", fieldWrite);
+
+		CtExpression<?> target = fieldWrite.getTarget();
+		String name = receiverName(target);
+		if (name == null) {
+			logError("Receiver name for field write not found for target " + target.toStringDebug(), fieldWrite);
+			return;
 		}
+
+		// Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
+		SymbolicValue receiverValue;
+		try {
+			receiverValue = evaluator.evalVar(name);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), fieldWrite);
+			return;
+		}
+
+		target.putMetadata(EVAL_KEY, receiverValue);
+		logInfo(String.format("%s: %s", name, receiverValue));
+	}
+
+	private String receiverName(CtExpression<?> target) {
+		if (target instanceof CtVariableRead<?> variableRead) {
+			return variableRead.getVariable().getSimpleName();
+		}
+		if (target instanceof CtThisAccess<?>) {
+			return THIS;
+		}
+		return null;
 	}
 
 	/**
-	 * Visit CTAssignment that can have a call, a new object, or an expression assignment
-	 * Rules: CheckVarAssign + CheckNew + CheckCall
+	 * Visit CTAssignment that can have a variable assignment or a field assignment
+	 * Rules: CheckVarAssign + CheckFieldAssign
 	 * 
 	 * CheckVarAssign
-	 * Γ(𝑥) = 𝐶 Γ ⊢ 𝑒 : 𝐶 Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′ Δ′ [𝑥 ↦ → 𝜈]; Σ′ ⪰ Δ′′; Σ′′
-	 * ------------------------------------------------------------------------
-	 *             Γ; Δ; Σ ⊢ 𝑥 = 𝑒; ⊣ Γ; Δ′′; Σ′′
+	 * Γ(𝑥) = 𝐶 
+	 * Γ ⊢ 𝑒 : 𝐶 
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
+	 * Δ′ [𝑥 ↦ → 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+	 * ------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥 = 𝑒; ⊣ Γ; Δ′′; Σ′′; 𝜑′
 	 * 
 	 * 
-	 * CheckNew
-	 * ctor(𝐶) = 𝐶 (𝛼1 𝐶1 𝑥1, ..., 𝛼𝑛 𝐶𝑛 𝑥𝑛 )
-	 * Γ ⊢ 𝑦 : 𝐶 Γ ⊢ 𝑒1, ..., 𝑒𝑛 : 𝐶1, ... , 𝐶𝑛
-	 * Γ; Δ; Σ ⊢ 𝑒1, ... , 𝑒𝑛 ⇓ 𝜈1, ... , 𝜈𝑛 ⊣ Γ′; Δ′; Σ′ Σ′ ⊢ 𝑒1, ... , 𝑒𝑛 : 𝛼1, ... , 𝛼𝑛 ⊣ Σ′′
-	 * distinct(Δ′, {𝜈𝑖 : borrowed ≤ 𝛼𝑖 }) fresh 𝜈′
-	 * Δ′ [𝑦 ↦ → 𝜈′]; Σ′′ [𝜈 ↦ → free] ⪰ Δ′′; Σ′′′
-	 * ------------------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑦 = new 𝐶 (𝑒1, ..., 𝑒𝑛 ); ⊣ Γ; Δ′′; Σ′′′
-	 * 
+	 * CheckFieldAssign
+	 *  field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+	 *  Γ ⊢ 𝑒 : 𝐶
+	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
+	 *	Γ; Δ′; Σ′; 𝜑 ′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑 ′′
+	 *	Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
+	 *	Δ′′ [𝜈.𝑓 ↦→ 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
+	 *  -------------------------------------------------
+	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 = 𝑒 ; ⊣ Γ; Δ′′′; Σ′′′′; 𝜑′′
 	 */
 	@Override
 	public <T, A extends T> void visitCtAssignment(CtAssignment<T, A> assignment) {
@@ -420,58 +433,35 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		CtExpression<?> assignee = assignment.getAssigned();
 		CtExpression<?> value = assignment.getAssignment();
 
-		if ( assignee instanceof CtVariableWriteImpl ){
-			CtVariableWriteImpl<?> var = (CtVariableWriteImpl<?>) assignee;
-			SymbolicValue targetSV = (SymbolicValue) value.getMetadata(EVAL_KEY);
-			Object metadata = value.getMetadata(EVAL_KEY);
-			if (metadata != null){
-				SymbolicValue valueSV = (SymbolicValue) metadata;
-
-				UniquenessAnnotation valuePerm = permEnv.get(valueSV);
-				UniquenessAnnotation targetPerm = permEnv.get(targetSV);
-				if (!permEnv.usePermissionAs(valueSV, valuePerm, targetPerm))
-					logError(String.format("Expected %s but got %s", targetPerm, valuePerm, value), value);
-
-				SymbolicValue fresh = symbEnv.addVariable(var.getVariable().getSimpleName());
-				permEnv.add(fresh, targetPerm);
-			} else {
-				logError("BUG: Missing metadata for the assignment", var);
-			}
-		// Variable Assignment - CheckVarAssign
-		} else if (assignee instanceof CtVariableWriteImpl){
-			SymbolicValue v = (SymbolicValue) value.getMetadata(EVAL_KEY);
-			if (v == null)
-				logError("Symbolic value for assignment not found", assignment);
-			symbEnv.addVarSymbolicValue(assignee.toString(), v);
-
 		// Field Assignment - CheckFieldAssign
-		} else if (assignee instanceof CtFieldWrite){
-			CtFieldWrite<?> fieldWrite = (CtFieldWrite<?>) assignee;
-			logInfo("Visiting field write <"+ fieldWrite.toStringDebug()+">");
-	
+		if (assignee instanceof CtFieldWrite<?> fieldWrite) {
 			CtExpression<?> x = fieldWrite.getTarget();
-			CtFieldReference<?> f = fieldWrite.getVariable();
-			CtTypeReference<?> ct = x.getType();
-			// field(Γ(𝑥), 𝑓 ) = 𝛼 𝐶
-			UniquenessAnnotation fieldPerm = maps.getFieldAnnotation(f.getSimpleName(), ct);
+			String fieldName = fieldWrite.getVariable().getSimpleName();
+
+			// field(Γ(𝑥), 𝑓) = 𝛼 𝐶
+			UniquenessAnnotation fieldPerm = getValueOrLog(maps.getFieldAnnotation(fieldName, x.getType()), assignment, "Field annotation not found for " + fieldName);
 	
-			// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′
-			SymbolicValue vv = (SymbolicValue) value.getMetadata(EVAL_KEY);
-			// Γ; Δ′; Σ′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′
-			SymbolicValue v = (SymbolicValue) x.getMetadata(EVAL_KEY); 
+        	// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈′ ⊣ Δ′; Σ′; 𝜑′
+			SymbolicValue vv = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for field assignment value not found");
 
-			// Σ′′ ⊢ 𝜈′ : 𝛼 ⊣ Σ′′′
-			UniquenessAnnotation vvPerm = permEnv.get(vv);
+			// Γ; Δ′; Σ′; 𝜑′ ⊢ 𝑥 ⇓ 𝜈 ⊣ Δ′′; Σ′′; 𝜑′′
+			SymbolicValue v = getValueOrLog((SymbolicValue) x.getMetadata(EVAL_KEY), assignment, "Symbolic value for field receiver not found");
 
-			// Check if we can use the permission of vv as the permission of the field
-			if (!permEnv.usePermissionAs(vv, vvPerm, fieldPerm))
-				logError(String.format("Expected %s but got %s", 
-					fieldPerm, vvPerm), assignment);
+			try {
+				evaluator.evalFieldAssignment(v, fieldName, vv, fieldPerm);
+			} catch (IllegalStateException exception) {
+				logError(exception.getMessage(), assignment);
+				return;
+			}
 
-			// Δ′′ [𝜈.𝑓 → 𝜈′]; Σ′′′ ⪰ Δ′′′; Σ′′′′
-			symbEnv.addFieldSymbolicValue(v, f.getSimpleName(), vv);
-		} 
-		ClassLevelMaps.simplify(symbEnv, permEnv);
+		// Variable Assignment - CheckVarAssign
+		} else if (assignee instanceof CtVariableWrite<?> variableWrite) {
+			// Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈 ⊣ Δ′; Σ′; 𝜑′
+			SymbolicValue valueSV = getValueOrLog((SymbolicValue) value.getMetadata(EVAL_KEY), assignment, "Symbolic value for assignment value not found");
+
+			// Δ′[𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
+			evaluator.evalVariableAssignment(variableWrite.getVariable().getSimpleName(), valueSV);
+		}
 		loggingSpaces--;
 	}
 
@@ -508,7 +498,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	private void handleConstructorArgs (CtConstructorCall<?> constCall){
 		CtClass<?> klass = maps.getClassFrom(constCall.getType());
 		int paramSize = constCall.getArguments().size();
-		CtConstructor<?> c = maps.geCtConstructor(klass, paramSize);
+		CtConstructor<?> c = maps.getCtConstructor(klass, paramSize);
 		List<SymbolicValue> paramSymbValues = new ArrayList<>();
 		if (klass == null || c == null){
 			logInfo(String.format("Cannot find the constructor for {} in the context", constCall.getType()), constCall);
@@ -658,89 +648,167 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 
 	/**
-	 * Rule EvalBinary
+	 * Evaluates both Spoon operands, translates the operator and delegates to EvalBinary, attaching the resulting symbolic value.
 	 */
 	@Override
 	public <T> void visitCtBinaryOperator(CtBinaryOperator<T> operator) {
 		logInfo("Visiting binary operator <"+ operator.toStringDebug()+">", operator);
 		loggingSpaces++;
-		super.visitCtBinaryOperator(operator);
+		try {
+			super.visitCtBinaryOperator(operator);
 
-		// Get a fresh symbolic value and add it to the environment with a shared default value
-		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.FREE);
+			SymbolicValue operand1 = (SymbolicValue) operator.getLeftHandOperand().getMetadata(EVAL_KEY);
+			SymbolicValue operand2 = (SymbolicValue) operator.getRightHandOperand().getMetadata(EVAL_KEY);
+			if (operand1 == null || operand2 == null) {
+				logError("Symbolic value for binary operator operand not found", operator);
+				return;
+			}
 
-		// Add the symbolic value to the environment with a shared default value
-		permEnv.add(sv, ua);
+			BinaryOperator op = SpoonToRjTranslator.toRjBinaryOperator(operator.getKind());
+			if (op == null) {
+				logError("Unsupported binary operator in evaluation: " + operator.getKind(), operator);
+				return;
+			}
 
-		// Store the symbolic value in metadata
-		operator.putMetadata(EVAL_KEY, sv);
-		logInfo(operator.toStringDebug() + ": "+ sv);
-		loggingSpaces--;
+			SymbolicValue sv = evaluator.evalBinary(operand1, op, operand2);
+			operator.putMetadata(EVAL_KEY, sv);
+			logInfo(operator.toStringDebug() + ": "+ sv);
+		} finally {
+			loggingSpaces--;
+		}
 	}
 
 	/**
-	 * Rule EvalUnary
+	 * Spoon models {@code this} as CtThisAccess rather than CtVariableRead.
+	 * Evaluates the source variable name, delegates EvalVar, and attaches the resulting symbolic value to the Spoon read.
+	 */
+	@Override
+	public <T> void visitCtThisAccess(CtThisAccess<T> thisAccess) {
+		super.visitCtThisAccess(thisAccess);
+
+		SymbolicValue sv;
+		try {
+			sv = evaluator.evalVar(THIS);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), thisAccess);
+			return;
+		}
+
+		thisAccess.putMetadata(EVAL_KEY, sv);
+	}
+
+	/**
+	 * Evaluates the Spoon operand, translates supported operators and operand, and delegates to EvalUnary, attaching the resulting symbolic value.
+	 * If the operator is a pre/post increment/decrement, we create a fresh symbolic value and assign it a shared permission, as the result of the operation updates the variable.
 	 */
 	@Override
 	public <T> void visitCtUnaryOperator(CtUnaryOperator<T> operator) {
 		logInfo("Visiting unary operator <"+ operator.toStringDebug()+">", operator);
 		loggingSpaces++;
-		super.visitCtUnaryOperator(operator);
+		try {
+			super.visitCtUnaryOperator(operator);
 
-		// Get a fresh symbolic value and add it to the environment with a shared default value
-		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.SHARED);
+			UnaryOperatorKind kind = operator.getKind();
+			if (kind == UnaryOperatorKind.POSTINC || kind == UnaryOperatorKind.POSTDEC
+					|| kind == UnaryOperatorKind.PREINC || kind == UnaryOperatorKind.PREDEC) {
+				SymbolicValue sv = symbEnv.getFresh();
+				permEnv.add(sv, new UniquenessAnnotation(Uniqueness.SHARED));
+				operator.putMetadata(EVAL_KEY, sv);
+				return;
+			}
 
-		// Add the symbolic value to the environment with a shared default value
-		permEnv.add(sv, ua);
-		
-		// Store the symbolic value in metadata
-		operator.putMetadata(EVAL_KEY, sv);
-		logInfo(operator.toStringDebug() + ": "+ sv);
-		loggingSpaces--;
+			SymbolicValue operand = (SymbolicValue) operator.getOperand().getMetadata(EVAL_KEY);
+			if (operand == null) {
+				logError("Symbolic value for unary operand not found", operator);
+				return;
+			}
+
+			UnaryOperator op = SpoonToRjTranslator.toRjUnaryOperator(operator.getKind());
+			if (op == null) {
+				logError("Unsupported unary operator in evaluation: " + operator.getKind(), operator);
+				return;
+			}
+
+			SymbolicValue sv = evaluator.evalUnary(op, operand);
+			operator.putMetadata(EVAL_KEY, sv);
+			logInfo(operator.toStringDebug() + ": "+ sv);
+		} finally {
+			loggingSpaces--;
+		}
 	}
 
 	/**
-	 * Rule EvalVar
+	 * Resolves the source variable name and attaches it to the Spoon local variable reference.
 	 */
 	@Override
 	public <T> void visitCtLocalVariableReference(CtLocalVariableReference<T> reference) {
 		logInfo("Visiting local variable reference <"+ reference.toString()+">", reference);
 		loggingSpaces++;
-		super.visitCtLocalVariableReference(reference);
-		
-		SymbolicValue sv = symbEnv.get(reference.getSimpleName());
-		if (sv == null) {
-			logError(String.format("Symbolic value for local variable %s not found in the symbolic environment",
-				reference.getSimpleName()), reference);
-		} else{
-			UniquenessAnnotation ua = permEnv.get(sv);
-			if (ua.isBottom()){
-				logInfo(String.format("%s: %s", sv, ua));
-			} else {
-				reference.putMetadata(EVAL_KEY, sv);
-				logInfo(String.format("%s: %s", reference.getSimpleName(), sv));
+		try {
+			super.visitCtLocalVariableReference(reference);
+
+			SymbolicValue sv = symbEnv.get(reference.getSimpleName());
+			if (sv == null) {
+				logError(String.format("Symbolic value for local variable %s not found in the symbolic environment", reference.getSimpleName()), reference);
+			} else{
+				UniquenessAnnotation ua = permEnv.get(sv);
+				if (ua.isBottom()){
+					logInfo(String.format("%s: %s", sv, ua));
+				} else {
+					reference.putMetadata(EVAL_KEY, sv);
+					logInfo(String.format("%s: %s", reference.getSimpleName(), sv));
+				}
 			}
+		} finally {
+			loggingSpaces--;
 		}
-		loggingSpaces--;
 	}
 
+	/**
+	 * Resolves the source variable name, delegates EvalVar, and attaches the resulting symbolic value to the Spoon read.
+	 */
 	@Override
 	public <T> void visitCtVariableRead(CtVariableRead<T> variableRead) {
 		loggingSpaces++;
-		logInfo("Visiting variable read <"+ variableRead.toString()+">", variableRead);
-		super.visitCtVariableRead(variableRead);
+		try {
+			logInfo("Visiting variable read <"+ variableRead.toString()+">", variableRead);
+			super.visitCtVariableRead(variableRead);
 
-		SymbolicValue sv = symbEnv.get(variableRead.getVariable().getSimpleName());
-		variableRead.putMetadata(EVAL_KEY, sv);
-		logInfo(variableRead.toString() + ": "+ sv);
-		loggingSpaces--;
+			String variableName = variableRead.getVariable().getSimpleName();
+			SymbolicValue sv;
+			try {
+				sv = evaluator.evalVar(variableName);
+			} catch (IllegalStateException exception) {
+				logError(exception.getMessage(), variableRead);
+				return;
+			}
+
+			variableRead.putMetadata(EVAL_KEY, sv);
+			logInfo(variableRead.toString() + ": "+ sv);
+		} finally {
+			loggingSpaces--;
+		}
+	}
+
+	/**
+	 * Rule EvalCatch
+	 * Visit a catch block, add the exception variable to the symbolic environment with a borrowed permission. This is necessary because previously the symbol of the exception was added as null, but given the new null check in the rules, we need to add it with a borrowed permission to avoid errors in the evaluation of local variable reads of the exception variable.
+	 */
+	@Override
+	public void visitCtCatch(CtCatch catchBlock) {
+    	// The exception variable is added to the symbolic environment with a borrowed permission, as we don't own the exception, we just catch it
+		CtCatchVariable<?> param = catchBlock.getParameter();
+		SymbolicValue sv = symbEnv.addVariable(param.getSimpleName());
+		// Borrowed permission because we don't own it, we just catch it
+		permEnv.add(sv, new UniquenessAnnotation(Uniqueness.BORROWED));
+		super.visitCtCatch(catchBlock);
 	}
 
 	/**
 	 * Rule EvalConst
-	 * Visit a literal, add a symbolic value to the environment and a permission of shared
+	 * Resolves the constant value of the literal and attaches it to the Spoon literal.
+	 * Delegated to the evaluator to evaluate the constant and attach the resulting symbolic value to the literal.
+	 * If the literal is null, we create a fresh symbolic value and assign it a free permission, as null isn't supported in the grammar, but we want to treat it as a free value.
 	 */
 	@Override
 	public <T> void visitCtLiteral(CtLiteral<T> literal) {
@@ -748,20 +816,20 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		
 		super.visitCtLiteral(literal);
 
-		// Get a fresh symbolic value and add it to the environment with an immutable default value
-		SymbolicValue sv = symbEnv.getFresh();
-		UniquenessAnnotation ua = new UniquenessAnnotation(Uniqueness.IMMUTABLE);
+		if (literal.getValue() == null) {
+			SymbolicValue sv = symbEnv.getFresh();
+			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.FREE));
+			literal.putMetadata(EVAL_KEY, sv);
+		} else {
+			Expression constant = SpoonToRjTranslator.toRjLiteral(literal);
+			if (constant == null) {
+				logError("Unsupported literal in evaluation: " + literal, literal);
+				return;
+			}
+			literal.putMetadata(EVAL_KEY, evaluator.evalConst(constant));
+		}
 
-		if (literal.getValue() == null)
-			ua = new UniquenessAnnotation(Uniqueness.FREE);  // its a null literal
-		
-
-		// Add the symbolic value to the environment with an immutable default value
-		permEnv.add(sv, ua);
-
-		// Store the symbolic value in metadata
-		literal.putMetadata(EVAL_KEY, sv);
-		logInfo("Literal "+ literal.toString() + ": "+ sv);
+		logInfo("Literal "+ literal.toString() + ": "+ literal.getMetadata(EVAL_KEY));
 	}
 
 
