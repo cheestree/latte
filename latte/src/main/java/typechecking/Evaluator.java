@@ -106,6 +106,7 @@ public class Evaluator {
 		if (!permEnv.usePermissionAs(value, valuePermission, expectedPermission)) {
 			throw new IllegalStateException("Expected " + expectedPermission + " but got " + valuePermission + " in " + description);
 		}
+	}
     
   /**
 	 * CheckVarAssign
