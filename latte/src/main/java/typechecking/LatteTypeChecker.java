@@ -72,7 +72,7 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		super.visitCtClass(ctClass);
 		exitScopes();
 	}
-			
+
 	
 	@Override
 	public <T> void visitCtConstructor(CtConstructor<T> c) {
@@ -597,47 +597,39 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 
 	/**
-	 * Rule EvalBinary
-	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
-	 * Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈2 ⊣ Δ2; Σ2; 𝜑2 
-	 * fresh 𝜈
-	 * if ⊕ ∈ {+, -, *, /, ==, !=, <, >, <=, >=, || , &&}
-	 * ---------------------------------------------------------------------------
-	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ2 ; 𝜈: imm, Σ2 ; 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
+	 * Evaluates both Spoon operands, translates the operator and delegates to EvalBinary, attaching the resulting symbolic value.
 	 */
 	@Override
 	public <T> void visitCtBinaryOperator(CtBinaryOperator<T> operator) {
 		logInfo("Visiting binary operator <"+ operator.toStringDebug()+">", operator);
 		loggingSpaces++;
-		// 𝑒1 ⇓ 𝜈1
-		// 𝑒2 ⇓ 𝜈2
-		super.visitCtBinaryOperator(operator);
+		try {
+			super.visitCtBinaryOperator(operator);
 
-		SymbolicValue operand1 = (SymbolicValue) operator.getLeftHandOperand().getMetadata(EVAL_KEY);
-		SymbolicValue operand2 = (SymbolicValue) operator.getRightHandOperand().getMetadata(EVAL_KEY);
-		if (operand1 == null || operand2 == null) {
-			logError("Symbolic value for binary operator operand not found", operator);
-			return;
+			SymbolicValue operand1 = (SymbolicValue) operator.getLeftHandOperand().getMetadata(EVAL_KEY);
+			SymbolicValue operand2 = (SymbolicValue) operator.getRightHandOperand().getMetadata(EVAL_KEY);
+			if (operand1 == null || operand2 == null) {
+				logError("Symbolic value for binary operator operand not found", operator);
+				return;
+			}
+
+			BinaryOperator op = SpoonToRjTranslator.toRjBinaryOperator(operator.getKind());
+			if (op == null) {
+				logError("Unsupported binary operator in evaluation: " + operator.getKind(), operator);
+				return;
+			}
+
+			SymbolicValue sv = evaluator.evalBinary(operand1, op, operand2);
+			operator.putMetadata(EVAL_KEY, sv);
+			logInfo(operator.toStringDebug() + ": "+ sv);
+		} finally {
+			loggingSpaces--;
 		}
-
-		// if ⊕ ∈ {+, -, *, /, ==, !=, <, >, <=, >=, || , &&}
-		BinaryOperator op = SpoonToRjTranslator.toRjBinaryOperator(operator.getKind());
-		if (op == null) {
-			logError("Unsupported binary operator in evaluation: " + operator.getKind(), operator);
-			return;
-		}
-
-		SymbolicValue sv = evaluator.evalBinary(operand1, op, operand2);
-
-		// Store the symbolic value in metadata
-		operator.putMetadata(EVAL_KEY, sv);
-		logInfo(operator.toStringDebug() + ": "+ sv);
-		loggingSpaces--;
 	}
+
 	/**
-	 * EvalVar
-	 * 𝑀 ::= (𝜌 » 𝜌) 𝜏 𝑚(𝜏 this, 𝜏 𝑥) { 𝑠 return 𝑒 ; }
-	 * EvalVar applies directly. Spoon models it as CtThisAccess rather than CtVariableRead, requiring a separate visitor.
+	 * Spoon models {@code this} as CtThisAccess rather than CtVariableRead.
+	 * Evaluates the source variable name, delegates EvalVar, and attaches the resulting symbolic value to the Spoon read.
 	 */
 	@Override
 	public <T> void visitCtThisAccess(CtThisAccess<T> thisAccess) {
@@ -655,102 +647,96 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 	}
 
 	/**
-	 * Rule EvalUnary
-	 * Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′ 
-	 * fresh 𝜈
-	 * if ⊕ ∈ {-, !}
-	 * -------------------------------------------
-	 * Γ; Δ; Σ ⊢ ⊕ 𝑒 ⇓ 𝜈 ⊣ Δ′; 𝜈: imm, Σ′; 𝜑 ∧ (𝜈 == ⊕𝜈1)
+	 * Evaluates the Spoon operand, translates supported operators and operand, and delegates to EvalUnary, attaching the resulting symbolic value.
+	 * If the operator is a pre/post increment/decrement, we create a fresh symbolic value and assign it a shared permission, as the result of the operation updates the variable.
 	 */
 	@Override
 	public <T> void visitCtUnaryOperator(CtUnaryOperator<T> operator) {
 		logInfo("Visiting unary operator <"+ operator.toStringDebug()+">", operator);
 		loggingSpaces++;
-		// 𝑒 ⇓ 𝜈1
-		super.visitCtUnaryOperator(operator);
+		try {
+			super.visitCtUnaryOperator(operator);
 
-		UnaryOperatorKind kind = operator.getKind();
-		// Increment and decrement operators do not have a specific permission, so they're treated differently
-		if (kind == UnaryOperatorKind.POSTINC || kind == UnaryOperatorKind.POSTDEC || kind == UnaryOperatorKind.PREINC  || kind == UnaryOperatorKind.PREDEC) {
-			SymbolicValue sv = symbEnv.getFresh();
-			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.SHARED));
+			UnaryOperatorKind kind = operator.getKind();
+			if (kind == UnaryOperatorKind.POSTINC || kind == UnaryOperatorKind.POSTDEC
+					|| kind == UnaryOperatorKind.PREINC || kind == UnaryOperatorKind.PREDEC) {
+				SymbolicValue sv = symbEnv.getFresh();
+				permEnv.add(sv, new UniquenessAnnotation(Uniqueness.SHARED));
+				operator.putMetadata(EVAL_KEY, sv);
+				return;
+			}
+
+			SymbolicValue operand = (SymbolicValue) operator.getOperand().getMetadata(EVAL_KEY);
+			if (operand == null) {
+				logError("Symbolic value for unary operand not found", operator);
+				return;
+			}
+
+			UnaryOperator op = SpoonToRjTranslator.toRjUnaryOperator(operator.getKind());
+			if (op == null) {
+				logError("Unsupported unary operator in evaluation: " + operator.getKind(), operator);
+				return;
+			}
+
+			SymbolicValue sv = evaluator.evalUnary(op, operand);
 			operator.putMetadata(EVAL_KEY, sv);
-			return;
+			logInfo(operator.toStringDebug() + ": "+ sv);
+		} finally {
+			loggingSpaces--;
 		}
-
-		SymbolicValue operand = (SymbolicValue) operator.getOperand().getMetadata(EVAL_KEY);
-		if (operand == null) {
-			logError("Symbolic value for unary operand not found", operator);
-			return;
-		}
-
-		// if ⊕ ∈ {-, !}
-		UnaryOperator op = SpoonToRjTranslator.toRjUnaryOperator(operator.getKind());
-		if (op == null) {
-			logError("Unsupported unary operator in evaluation: " + operator.getKind(), operator);
-			return;
-		}
-
-		SymbolicValue sv = evaluator.evalUnary(op, operand);
-
-		// Store the symbolic value in metadata
-		operator.putMetadata(EVAL_KEY, sv);
-		logInfo(operator.toStringDebug() + ": "+ sv);
-		loggingSpaces--;
 	}
 
 	/**
-	 * Attach metadata to Spoon's structural local-variable reference.
-	 *
-	 * This is not itself EvalVar: references also occur below writes and declarations,
-	 * where a bottom permission is valid before assignment.
+	 * Resolves the source variable name and attaches it to the Spoon local variable reference.
 	 */
 	@Override
 	public <T> void visitCtLocalVariableReference(CtLocalVariableReference<T> reference) {
 		logInfo("Visiting local variable reference <"+ reference.toString()+">", reference);
 		loggingSpaces++;
-		super.visitCtLocalVariableReference(reference);
-		
-		SymbolicValue sv = symbEnv.get(reference.getSimpleName());
-		if (sv == null) {
-			logError(String.format("Symbolic value for local variable %s not found in the symbolic environment",
-				reference.getSimpleName()), reference);
-		} else{
-			UniquenessAnnotation ua = permEnv.get(sv);
-			if (ua.isBottom()){
-				logInfo(String.format("%s: %s", sv, ua));
-			} else {
-				reference.putMetadata(EVAL_KEY, sv);
-				logInfo(String.format("%s: %s", reference.getSimpleName(), sv));
+		try {
+			super.visitCtLocalVariableReference(reference);
+
+			SymbolicValue sv = symbEnv.get(reference.getSimpleName());
+			if (sv == null) {
+				logError(String.format("Symbolic value for local variable %s not found in the symbolic environment", reference.getSimpleName()), reference);
+			} else{
+				UniquenessAnnotation ua = permEnv.get(sv);
+				if (ua.isBottom()){
+					logInfo(String.format("%s: %s", sv, ua));
+				} else {
+					reference.putMetadata(EVAL_KEY, sv);
+					logInfo(String.format("%s: %s", reference.getSimpleName(), sv));
+				}
 			}
+		} finally {
+			loggingSpaces--;
 		}
-		loggingSpaces--;
 	}
 
 	/**
-	 *  EvalVar
-	 *  Δ(𝑥) = 𝜈 Σ(𝜈) ≠ ⊥
-	 *  ----------------------------------
-	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
+	 * Resolves the source variable name, delegates EvalVar, and attaches the resulting symbolic value to the Spoon read.
 	 */
 	@Override
 	public <T> void visitCtVariableRead(CtVariableRead<T> variableRead) {
 		loggingSpaces++;
-		logInfo("Visiting variable read <"+ variableRead.toString()+">", variableRead);
-		super.visitCtVariableRead(variableRead);
-
-		String variableName = variableRead.getVariable().getSimpleName();
-		SymbolicValue sv;
 		try {
-			sv = evaluator.evalVar(variableName);
-		} catch (IllegalStateException exception) {
-			logError(exception.getMessage(), variableRead);
-			return;
-		}
+			logInfo("Visiting variable read <"+ variableRead.toString()+">", variableRead);
+			super.visitCtVariableRead(variableRead);
 
-		variableRead.putMetadata(EVAL_KEY, sv);
-		logInfo(variableRead.toString() + ": "+ sv);
-		loggingSpaces--;
+			String variableName = variableRead.getVariable().getSimpleName();
+			SymbolicValue sv;
+			try {
+				sv = evaluator.evalVar(variableName);
+			} catch (IllegalStateException exception) {
+				logError(exception.getMessage(), variableRead);
+				return;
+			}
+
+			variableRead.putMetadata(EVAL_KEY, sv);
+			logInfo(variableRead.toString() + ": "+ sv);
+		} finally {
+			loggingSpaces--;
+		}
 	}
 
 	/**
@@ -769,10 +755,9 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 
 	/**
 	 * Rule EvalConst
-	 * Visit a literal, add a symbolic value to the environment and a permission of shared
-	 * fresh 𝜈
-	 * -------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑐 ⇓ 𝜈 ⊣ Δ; 𝜈: imm, Σ; 𝜑 ∧ (𝜈 == 𝑐)
+	 * Resolves the constant value of the literal and attaches it to the Spoon literal.
+	 * Delegated to the evaluator to evaluate the constant and attach the resulting symbolic value to the literal.
+	 * If the literal is null, we create a fresh symbolic value and assign it a free permission, as null isn't supported in the grammar, but we want to treat it as a free value.
 	 */
 	@Override
 	public <T> void visitCtLiteral(CtLiteral<T> literal) {
@@ -780,7 +765,6 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		
 		super.visitCtLiteral(literal);
 
-		// Grammar doesn't allow null literals, but we want to treat them as free values, so we check for null and assign the appropriate permission
 		if (literal.getValue() == null) {
 			SymbolicValue sv = symbEnv.getFresh();
 			permEnv.add(sv, new UniquenessAnnotation(Uniqueness.FREE));

@@ -77,16 +77,16 @@ public class Evaluator {
 		throw new IllegalStateException("Unsupported evaluation expression: " + expression.getClass().getSimpleName());
 	}
 
-	/**
-	 *  EvalVar
-	 *	Δ(𝑥) = 𝜈 Σ(𝜈) ≠ ⊥
-	 *  ----------------------------------
-	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
-	 */
 	private SymbolicValue evalVarValue(Var var) {
 		return evalVar(var.getName());
 	}
 
+	/**
+	 * EvalVar
+	 * Δ(𝑥) = 𝜈   Σ(𝜈) ≠ ⊥
+	 * ----------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥 ⇓ 𝜈 ⊣ Γ; Δ; Σ; 𝜑
+	 */
 	public SymbolicValue evalVar(String variableName) {
 		// Δ(𝑥) = 𝜈
 		SymbolicValue value = symbEnv.getOrThrow(variableName);
@@ -162,11 +162,7 @@ public class Evaluator {
 	 * ----------------------------------------------------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓: 𝜈′, Δ; 𝜈′: 𝛼, Σ; 𝜑
 	 */
-	private SymbolicValue evalUniqueOrBorrowedField(
-			String receiverName,
-			SymbolicValue receiverValue,
-			String fieldName,
-			UniquenessAnnotation declaredFieldPerm) {
+	private SymbolicValue evalUniqueOrBorrowedField(String receiverName, SymbolicValue receiverValue, String fieldName, UniquenessAnnotation declaredFieldPerm) {
 		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
 		permEnv.add(fieldValue, declaredFieldPerm);
 		return evalField(receiverName, fieldName, fieldValue);
@@ -178,25 +174,22 @@ public class Evaluator {
 	 * ------------------------------------------------------
 	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑥.𝑓 ⇓ 𝜈′ ⊣ 𝜈.𝑓 : 𝜈′, Δ; 𝜈′: shared, Σ; 𝜑
 	 */
-	private SymbolicValue evalSharedField(
-			String receiverName,
-			SymbolicValue receiverValue,
-			String fieldName) {
+	private SymbolicValue evalSharedField(String receiverName, SymbolicValue receiverValue, String fieldName) {
 		SymbolicValue fieldValue = symbEnv.addField(receiverValue, fieldName);
 		permEnv.add(fieldValue, new UniquenessAnnotation(Uniqueness.SHARED));
 		return evalField(receiverName, fieldName, fieldValue);
 	}
 
-	/**
-	 * EvalConst
-	 * fresh 𝜈
-	 * -------------------------------------------
-	 * Γ; Δ; Σ ⊢ 𝑐 ⇓ 𝜈 ⊣ Δ; 𝜈: imm, Σ; 𝜑 ∧ (𝜈 == 𝑐)
-	 */
 	private SymbolicValue evalConstValue(Expression constant) {
 		return evalConst(constant);
 	}
 
+	/**
+	 * EvalConst
+	 * fresh 𝜈
+	 * ------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑐 ⇓ 𝜈 ⊣ Δ; 𝜈: imm, Σ; 𝜑 ∧ (𝜈 == 𝑐)
+	 */
 	public SymbolicValue evalConst(Expression constant) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
@@ -204,19 +197,19 @@ public class Evaluator {
 		return value;
 	}
 
-	/**
-	 *  EvalUnary
-	 *	Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′ fresh 𝜈
-	 *	if ⊕ ∈ {-, !}
-	 *	-------------------------------------------
-	 *	Γ; Δ; Σ ⊢ ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ′; 𝜈: imm, Σ′; 𝜑 ∧ (𝜈 == ⊕𝜈1)
-	 */
 	private SymbolicValue evalUnaryValue(UnaryExpression unaryExpression) {
 		// Γ; Δ; Σ ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′
 		SymbolicValue operand = evalExpression(unaryExpression.getExpression());
 		return evalUnary(unaryExpression.getOperator(), operand);
 	}
 
+	/**
+	 * EvalUnary
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒 ⇓ 𝜈1 ⊣ Δ′; Σ′; 𝜑′   fresh 𝜈
+	 * if ⊕ ∈ {-, !}
+	 * ----------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ ⊕𝑒 ⇓ 𝜈 ⊣ Δ′; 𝜈: imm, Σ′; 𝜑′ ∧ (𝜈 == ⊕𝜈1)
+	 */
 	public SymbolicValue evalUnary(UnaryOperator operator, SymbolicValue operand) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
@@ -227,14 +220,6 @@ public class Evaluator {
 		return value;
 	}
 
-	/**
-	 * 	EvalBinary
-	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
-	 *	Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈2 ⊣ Δ2; Σ2; 𝜑2 fresh 𝜈
-	 *	if ⊕ ∈ {+, -, *, /, == , < , || , &&}
-	 *  ---------------------------------------------------------------------------
-	 *	Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ2 ; 𝜈: imm, Σ2 ; 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
-	 */
 	private SymbolicValue evalBinaryValue(BinaryExpression binaryExpression) {
 		// Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
 		SymbolicValue left = evalExpression(binaryExpression.getLeft());
@@ -243,6 +228,14 @@ public class Evaluator {
 		return evalBinary(left, binaryExpression.getOperator(), right);
 	}
 
+	/**
+	 * EvalBinary
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⇓ 𝜈1 ⊣ Δ1; Σ1; 𝜑1
+	 * Γ; Δ1; Σ1; 𝜑1 ⊢ 𝑒2 ⇓ 𝜈2 ⊣ Δ2; Σ2; 𝜑2   fresh 𝜈
+	 * if ⊕ ∈ {+, -, *, /, ==, <, ||, &&}
+	 * ---------------------------------------------------------------------------
+	 * Γ; Δ; Σ; 𝜑 ⊢ 𝑒1 ⊕ 𝑒2 ⇓ 𝜈 ⊣ Δ2; 𝜈: imm, Σ2; 𝜑2 ∧ (𝜈 == 𝜈1 ⊕ 𝜈2)
+	 */
 	public SymbolicValue evalBinary(SymbolicValue left, BinaryOperator operator, SymbolicValue right) {
 		// fresh 𝜈
 		SymbolicValue value = addImmutableFresh();
@@ -261,8 +254,6 @@ public class Evaluator {
 	}
 
 	private boolean isExclusiveReceiver(UniquenessAnnotation perm) {
-		return perm.isFree()
-			|| perm.isUnique()
-			|| perm.annotationEquals(Uniqueness.BORROWED);
+		return perm.isFree() || perm.isUnique() || perm.annotationEquals(Uniqueness.BORROWED);
 	}
 }
