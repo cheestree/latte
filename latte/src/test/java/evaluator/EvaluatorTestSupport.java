@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -15,6 +16,7 @@ import context.TypeEnvironment;
 import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.Expression;
+import rj_language.ast.Var;
 import rj_language.visitors.ExpressionPrettyPrinter;
 
 abstract class EvaluatorTestSupport {
@@ -42,12 +44,16 @@ abstract class EvaluatorTestSupport {
         symbEnv.exitScope();
     }
 
-    protected void assertPrints(Expression expression, String expected) {
+    protected void assertExpressionEquals(Expression expression, String expected) {
         assertEquals(expected, ExpressionPrettyPrinter.print(expression));
     }
 
-    protected void assertPrintsMatching(Expression expression, String regex) {
+    protected void assertExpressionMatches(Expression expression, String regex) {
         assertTrue(ExpressionPrettyPrinter.print(expression).matches(regex));
+    }
+
+    protected void assertPathEquals(String expected) {
+        assertEquals(expected, ExpressionPrettyPrinter.print(refinementPath.toConjunct()));
     }
 
     protected long countPrintedOccurrences(Expression expression, SymbolicValue value) {
@@ -60,5 +66,13 @@ abstract class EvaluatorTestSupport {
 
     protected void assertImmutable(SymbolicValue value) {
         assertEquals(new UniquenessAnnotation(Uniqueness.IMMUTABLE), permEnv.get(value));
+    }
+
+    protected SymbolicValue symbolicValueOf(Expression expression) {
+        Var symbolicVariable = assertInstanceOf(Var.class, expression);
+        String prefix = "𝜈";
+        String name = symbolicVariable.getName();
+        assertTrue(name.startsWith(prefix));
+        return new SymbolicValue(Integer.parseInt(name.substring(prefix.length())));
     }
 }

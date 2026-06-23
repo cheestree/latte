@@ -134,6 +134,22 @@ public class PermissionEnvironment {
         return false;
     }
 
+
+	/**
+	 * Check if the variable returns a permission.
+     * @param symbolicValue the symbolic value to check
+     * @param description the description of the variable to use in the exception message
+	 * @return the permission of the variable
+	 * @throws IllegalStateException if the variable does not have a permission in the environment
+	 */
+    public UniquenessAnnotation getOrThrow(SymbolicValue symbolicValue, String description) {
+        UniquenessAnnotation value = get(symbolicValue);
+        if (value == null) {
+            throw new IllegalStateException("Missing permission for symbolic value " + symbolicValue + " when evaluating " + description);
+        }
+        return value;
+    }
+
     /**
 	 * Clone the permission environment at a certain moment in time
 	 * @return
