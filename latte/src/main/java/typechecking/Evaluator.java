@@ -99,6 +99,16 @@ public class Evaluator {
 	}
 
 	/**
+	 * Σ ⊢ 𝜈 : 𝛼 ⊣ Σ′
+	 */
+	public void usePermissionAs(SymbolicValue value, UniquenessAnnotation expectedPermission, String description) {
+		UniquenessAnnotation valuePermission = permEnv.getOrThrow(value, description);
+		if (!permEnv.usePermissionAs(value, valuePermission, expectedPermission)) {
+			throw new IllegalStateException("Expected " + expectedPermission + " but got " + valuePermission + " in " + description);
+		}
+	}
+    
+  /**
 	 * CheckVarAssign
 	 * Δ′ [𝑥 ↦→ 𝜈]; Σ′ ⪰ Δ′′; Σ′′
 	 */

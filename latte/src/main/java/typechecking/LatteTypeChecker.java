@@ -5,6 +5,7 @@ import java.util.List;
 
 import context.ClassLevelMaps;
 import context.PermissionEnvironment;
+import context.RefinementContract;
 import context.RefinementPath;
 import context.SymbolicEnvironment;
 import context.SymbolicValue;
@@ -13,6 +14,8 @@ import context.Uniqueness;
 import context.UniquenessAnnotation;
 import rj_language.ast.BinaryOperator;
 import rj_language.ast.Expression;
+import rj_language.ast.Var;
+import rj_language.visitors.SubstitutionVisitor;
 import rj_language.ast.UnaryOperator;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
@@ -42,6 +45,10 @@ import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
 import spoon.reflect.reference.CtLocalVariableReference;
 import spoon.reflect.reference.CtTypeReference;
+import spoon.support.reflect.code.CtThisAccessImpl;
+import spoon.support.reflect.code.CtVariableReadImpl;
+import spoon.support.reflect.code.CtVariableWriteImpl;
+import utils.Constants;
 
 /**
  * In the type checker we go through the code, add metadata regarding the types and their permissions
@@ -89,20 +96,41 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		exitScopes();
 	}
 	
+	/**
+	 * To evaluate both premises, it is necessary to have 'this' and the parameters in the symbolic and permission environments, as they are used in the evaluation of the precondition and the body of the method.
+	 * The rest of the T-method premises are handled in the visitCtBlock method, where the body of the method is evaluated.
+	 * T-Method
+	 *  Γ; Δ; Σ; 𝜑 ⊢ 𝜌𝑝𝑟𝑒 ⇓ 𝜌′𝑝𝑟𝑒 ⊣ Γ1; Δ1; Σ1; 𝜑1
+	 *  Γ1; Δ1; Σ1; 𝜑1 ∧ 𝜌 𝑝𝑟𝑒′ ⊢ 𝑠 ⊣ Γ2; Δ2; Σ2; 𝜑2
+	 */
 	@Override
 	public <T> void visitCtMethod(CtMethod<T> m) {
 		logInfo("Visiting method <"+ m.getSimpleName()+">", m);
 		enterScopes();
 
-		// Assume 'this' is a parameter always borrowed
+		// Γ = this: C0, Δ = this: ν0, Σ = ν0: borrowed
 		typeEnv.add(THIS, m.getDeclaringType().getReference());
 		SymbolicValue thv = symbEnv.addVariable(THIS);
 		permEnv.add(thv, new UniquenessAnnotation(Uniqueness.BORROWED));
 
-		super.visitCtMethod(m);
+		for (CtParameter<?> param : m.getParameters()) {
+			visitCtParameter(param);
+		}
+
+		RefinementContract contract = (RefinementContract) m.getMetadata(Constants.METHOD_CONTRACT_KEY);
+		// Γ; Δ; Σ; 𝜑 ⊢ 𝜌𝑝𝑟𝑒 ⇓ 𝜌′𝑝𝑟𝑒 ⊣ Γ1; Δ1; Σ1; 𝜑1
+		Expression pre = contract == null ? null : contract.getFrom();
+		if (pre != null) {
+			evaluateAndAssumePre(pre);
+		}
+
+		// Γ1; Δ1; Σ1; 𝜑1 ∧ 𝜌 𝑝𝑟𝑒′ ⊢ 𝑠 ⊣ Γ2; Δ2; Σ2; 𝜑2
+		if (m.getBody() != null) {
+			visitCtBlock(m.getBody());
+		}
+
 		exitScopes();
 	}
-	
 	
 	@Override
 	public <T> void visitCtParameter(CtParameter<T> parameter) {
@@ -554,23 +582,67 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 		joining(thenSymbEnv, thenPermEnv, elseSymbEnv, elsePermEnv);
 	}
 
+	/**
+	 * T-Method
+	 *  Γ2; Δ2; Σ2; 𝜑2 ⊢ 𝑥𝑟 ⇓ 𝜈𝑟 ⊣ Γ3; Δ3; Σ3; 𝜑3
+	 *  Σ3 ⊢ 𝜈𝑟 : 𝛼 ⊣ Σ4
+	 *  Γ3 ⊢ 𝑥𝑟 : 𝐶
+	 *  Γ3; Δ3; Σ4; 𝜑3 ⊢ 𝑂𝜌𝑝𝑜𝑠𝑡 ⇓ 𝜌′𝑝𝑜𝑠𝑡 ⊣ Γ4; Δ4; Σ5; 𝜑4
+	 *  Γ4; Δ4; Σ5; 𝜑4 ⊢ 𝑆𝑀𝑇𝜌′𝑝𝑜𝑠𝑡[𝜈𝑟/𝑟𝑒𝑠𝑢𝑙t]
+	 */
 	@Override
 	public <R> void visitCtReturn(CtReturn<R> returnStatement) {
 		logInfo("Visiting return <"+ returnStatement.toStringDebug()+">", returnStatement);
 		super.visitCtReturn(returnStatement);
 
-		CtExpression<?> returned = returnStatement.getReturnedExpression();
-		if (returned == null) return;
-		SymbolicValue vRet = (SymbolicValue) returned.getMetadata(EVAL_KEY);
-		if (vRet == null) logError("Symbolic value for return not found:"+returned.toStringDebug(), returned);
-		UniquenessAnnotation ua = permEnv.get(vRet);
-
 		CtMethod<?> cmet = returnStatement.getParent(CtMethod.class);
+		RefinementContract rc = (RefinementContract) cmet.getMetadata(Constants.METHOD_CONTRACT_KEY);
+		Expression post = rc == null ? null : rc.getTo();
+
+		CtExpression<?> returned = returnStatement.getReturnedExpression();
+
+		// T-Method-void return type, result can't appear in postcondition
+		if (returned == null) {
+			if (post != null) {
+				Expression evaluated = evaluator.eval(post);
+				// Solve the post condition and check if it is satisfiable
+			}
+			return;
+		}
+
+		// T-Method 
+		// Γ2; Δ2; Σ2; 𝜑2 ⊢ 𝑥𝑟 ⇓ 𝜈𝑟 ⊣ Γ3; Δ3; Σ3; 𝜑3
+		SymbolicValue vRet = getValueOrLog((SymbolicValue) returned.getMetadata(EVAL_KEY), returnStatement, "Symbolic value for return expression not found");
+
+		// Σ3 ⊢ 𝜈𝑟 : 𝛼 ⊣ Σ4
 		UniquenessAnnotation expectedUA = new UniquenessAnnotation(cmet);
-	
-		if(!permEnv.usePermissionAs(vRet, ua, expectedUA)){
-			logError(String.format("Expected %s but got %s in return %s", 
-				expectedUA, ua, returnStatement.toString()), returned);
+		try {
+			evaluator.usePermissionAs(vRet, expectedUA, "return " + returnStatement);
+		} catch (IllegalStateException exception) {
+			logError(exception.getMessage(), returned);
+			return;
+		}
+
+		// Γ3 ⊢ 𝑥𝑟 : 𝐶
+		CtTypeReference<?> declaredReturnType = cmet.getType();
+		CtClass<?> declaredClass = maps.getClassFrom(declaredReturnType);
+		// Null return types are legal in Java, but we cannot check the subtype relationship.
+		if (declaredClass != null) {
+			CtTypeReference<?> actualReturnType = returned.getType();
+			if (!actualReturnType.getQualifiedName().equals("null")) {
+				CtClass<?> actualClass = maps.getClassFrom(actualReturnType);
+				if (actualClass != null && !actualReturnType.isSubtypeOf(declaredReturnType)) {
+					logError(String.format("Return type mismatch: expected %s but got %s", declaredReturnType, actualReturnType), returned);
+				}
+			}
+		}
+
+
+		// Γ3; Δ3; Σ4; 𝜑3 ⊢ 𝑂𝜌𝑝𝑜𝑠𝑡 ⇓ 𝜌′𝑝𝑜𝑠𝑡 ⊣ Γ4; Δ4; Σ5; 𝜑4
+		if (post != null) {
+			Expression substituted = post.accept(new SubstitutionVisitor("return", new Var(vRet.toString())));
+			Expression evaluated = evaluator.eval(substituted);
+			// Solve the post condition and check if it is satisfiable
 		}
 	}
 
@@ -800,12 +872,11 @@ public class LatteTypeChecker  extends LatteAbstractChecker {
 			refPath.addExpression(prePredicate);
 		}
 	}
-
+	
 	private <T> T getValueOrLog(T value, CtElement element, String message, Object... args) {
 		if (value == null) {
 			logError(String.format(message, args), element);
 		}
 		return value;
 	}
-
 }
